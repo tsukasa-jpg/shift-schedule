@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>月間シフト表</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --header-h: 44px; --legend-h: 0px; }
+
+    body {
+      font-family: 'Meiryo UI', 'Meiryo', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #333;
+    }
+
+    /* ===== HEADER ===== */
+    #app-header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      flex-wrap: wrap;
+    }
+    #app-header h1 { font-size: 14px; font-weight: bold; white-space: nowrap; }
+
+    .month-nav { display: flex; align-items: center; gap: 5px; }
+    .month-nav button {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff; padding: 4px 9px; border-radius: 4px;
+      cursor: pointer; font-size: 12px; font-family: inherit;
+    }
+    .month-nav button:hover { background: rgba(255,255,255,0.28); }
+
+    #currentMonthLabel {
+      font-size: 14px; font-weight: bold;
+      white-space: nowrap; min-width: 170px; text-align: center;
+    }
+
+    .header-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .hbtn {
+      padding: 5px 11px; border-radius: 4px; border: none;
+      cursor: pointer; font-size: 12px; font-family: inherit; white-space: nowrap;
+    }
+    .hbtn-green  { background: #48bb78; color: #fff; } .hbtn-green:hover  { background: #38a169; }
+    .hbtn-orange { background: #ed8936; color: #fff; } .hbtn-orange:hover { background: #dd6b20; }
+    .hbtn-teal   { background: #319795; color: #fff; } .hbtn-teal:hover   { background: #2c7a7b; }
+    .hbtn-ghost  { background: rgba(255,255,255,0.13); color: #fff; border: 1px solid rgba(255,255,255,0.28); }
+    .hbtn-ghost:hover { background: rgba(255,255,255,0.22); }
+
+    /* ===== LEGEND ===== */
+    #legend {
+      padding: 5px 14px;
+      background: #fff;
+      border-bottom: 1px solid #dde1e7;
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    }
+    .leg-label { font-size: 11px; font-weight: bold; color: #555; margin-right: 2px; }
+    .leg-chip  { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; white-space: nowrap; }
+    .leg-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-weight: bold; font-size: 11px; }
+    .leg-time  { color: #888; }
+    .leg-hint  { margin-left: auto; font-size: 10px; color: #aaa; white-space: nowrap; }
+    .leg-divider { width: 1px; background: #ddd; height: 16px; margin: 0 2px; }
+
+    /* ===== BIKO SECTION ===== */
+    #biko-section {
+      margin: 8px 14px 0;
+      border: 1px solid #dde1e7;
+      border-radius: 4px;
+      padding: 6px 10px;
+      background: #fff;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    #biko-section .biko-label { font-size: 12px; font-weight: bold; color: #555; white-space: nowrap; padding-top: 4px; }
+    #biko-section textarea {
+      flex: 1;
+      resize: vertical;
+      min-height: 48px;
+      font-size: 12px;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      padding: 4px 6px;
+      color: #333;
+      line-height: 1.5;
+    }
+    #biko-section .biko-print-text { display: none; }
+
+    /* ===== TABLE CONTAINER ===== */
+    #table-container {
+      overflow: auto;
+      height: calc(100vh - var(--header-h) - var(--legend-h));
+      padding: 10px 12px 24px;
+    }
+
+    /* ===== SHIFT TABLE ===== */
+    #shiftTable {
+      border-collapse: collapse; background: #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1); min-width: max-content;
+    }
+    #shiftTable th, #shiftTable td {
+      border: 1px solid #c8cdd5; padding: 3px 4px;
+      text-align: center; white-space: nowrap; height: 26px; font-size: 11px;
+    }
+
+    /* Sticky thead — relative to #table-container (the scroll container) */
+    #shiftTable thead th { position: sticky; top: 0; z-index: 20; background: #2c4f78; color: #fff; }
+    #shiftTable thead tr:nth-child(2) th { top: 26px; }
+    #shiftTable thead tr:nth-child(3) th { top: 52px; }
+
+    /* Sticky first col */
+    .col-name {
+      position: sticky; left: 0; z-index: 15;
+      text-align: left; padding-left: 7px !important;
+      min-width: 90px; max-width: 130px; font-weight: bold;
+    }
+    #shiftTable thead .col-name { background: #1e3a5f; z-index: 35; }
+    #shiftTable tbody .col-name { background: #e9ecf1; }
+    #shiftTable tfoot .col-name { background: #dde2ea; }
+
+    /* Date headers */
+    .dh-month { font-size: 10px; min-width: 34px; background: #3a5a80 !important; }
+    .dh-num   { min-width: 34px; font-size: 11px; }
+    .dh-dow   { font-size: 10px; min-width: 34px; }
+
+    .d-sat { background: #bed8f5 !important; color: #1a4a80 !important; }
+    .d-sun { background: #fad4d4 !important; color: #a01010 !important; }
+    .d-hol { background: #fad4d4 !important; color: #a01010 !important; }
+
+    .month-boundary { border-left: 3px solid #2c4f78 !important; }
+
+    /* Shift cells */
+    .shift-cell {
+      cursor: pointer; min-width: 34px; user-select: none;
+      transition: filter 0.08s; font-weight: bold; position: relative;
+    }
+    .shift-cell:hover { filter: brightness(0.86); }
+    .shift-cell.d-sat { background-color: #e8f2fc; color: #1a4a80; font-weight: normal; }
+    .shift-cell.d-sun, .shift-cell.d-hol { background-color: #fef0f0; color: #801010; font-weight: normal; }
+
+    .skill-warn { outline: 2px solid #e53e3e; outline-offset: -2px; }
+    .skill-warn::after {
+      content: '⚠'; font-size: 8px; position: absolute;
+      top: 1px; right: 1px; color: #e53e3e; pointer-events: none;
+    }
+
+    /* 定休日セル（空白時：斜線ハッチ） */
+    .cell-reg-off {
+      background-image: repeating-linear-gradient(
+        135deg, transparent, transparent 4px,
+        rgba(130,130,150,0.13) 4px, rgba(130,130,150,0.13) 8px
+      ) !important;
+    }
+    /* 希望休セル（空白時：薄黄） */
+    .cell-req-off { background-color: #fffbdc !important; }
+    .cell-req-off::before {
+      content: '希'; font-size: 8px; color: #b8880a; font-weight: bold;
+      position: absolute; top: 1px; left: 2px; pointer-events: none;
+      line-height: 1;
+    }
+
+    /* Summary / work-skill cols */
+    .col-sum { background: #f4f6fa; font-size: 10px; min-width: 26px; }
+    .col-sum-total { font-weight: bold; color: #1e3a5f; }
+    .col-sum-hours { font-weight: bold; color: #5c1888; min-width: 36px; }
+    .col-sum-budget { font-weight: bold; color: #7a3500; min-width: 56px; white-space: nowrap; }
+    .hours-over { background: #fff0f0 !important; color: #c00 !important; }
+
+    /* Tfoot */
+    #shiftTable tfoot th { background: #3d5472; color: #fff; font-size: 10px; }
+    #shiftTable tfoot td { background: #f4f6fa; font-size: 10px; }
+    .tfoot-work-count { font-weight: bold; }
+
+    /* Work skill coverage cells in tfoot */
+    .ws-ok   { background: #c6f6d5 !important; color: #22543d !important; font-weight: bold; }
+    .ws-ng   { background: #fed7d7 !important; color: #742a2a !important; font-weight: bold; }
+    .ws-zero { background: #f4f6fa !important; color: #aaa !important; }
+
+    /* Work skill badges in staff name cell */
+    .ws-badge {
+      display: inline-block; font-size: 9px; padding: 0 3px;
+      border-radius: 2px; margin-left: 2px; line-height: 14px;
+      font-weight: bold; vertical-align: middle;
+    }
+
+    /* ===== POPUP ===== */
+    #shiftPopup {
+      position: fixed; display: none; background: #fff;
+      border: 1px solid #b0b8c4; border-radius: 10px;
+      padding: 11px 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.22);
+      z-index: 1000; min-width: 235px;
+    }
+    .popup-title {
+      font-size: 11px; font-weight: bold; color: #3a4a5c;
+      padding-bottom: 7px; margin-bottom: 5px; border-bottom: 1px solid #e4e8ee;
+    }
+    .popup-info-row { font-size: 10px; margin-bottom: 6px; color: #555; }
+    .popup-info-row span { margin-right: 6px; }
+    .popup-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 5px; }
+    .popup-shift-btn {
+      border: 1px solid rgba(0,0,0,0.12); border-radius: 5px; cursor: pointer;
+      padding: 6px 3px 5px; font-family: inherit; font-weight: bold;
+      font-size: 12px; text-align: center; line-height: 1.2; transition: filter 0.08s;
+    }
+    .popup-shift-btn:hover { filter: brightness(0.87); }
+    .popup-shift-btn small { display: block; font-size: 9px; font-weight: normal; margin-top: 1px; }
+    .popup-shift-btn.no-skill { opacity: 0.42; }
+    .popup-clear-btn {
+      background: #fff; color: #888; border: 1px dashed #b0b8c4;
+      border-radius: 5px; cursor: pointer; padding: 6px 3px;
+      font-family: inherit; font-size: 11px;
+    }
+    .popup-clear-btn:hover { background: #f4f6fa; }
+    .popup-cancel-btn {
+      background: #e8eaf0; color: #555; border: 1px solid #c8cdd5;
+      border-radius: 5px; cursor: pointer; padding: 6px 3px;
+      font-family: inherit; font-size: 11px;
+    }
+    .popup-cancel-btn:hover { background: #dde1e7; }
+
+    /* ===== MODALS (shared overlay style) ===== */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.48); z-index: 500;
+      align-items: center; justify-content: center;
+    }
+    .modal-box {
+      background: #fff; border-radius: 10px; padding: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      display: flex; flex-direction: column; gap: 12px;
+      max-height: 88vh; overflow: hidden;
+    }
+    .modal-box h2 { font-size: 16px; color: #1e3a5f; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+
+    .dbtn { padding: 7px 12px; border-radius: 5px; border: none; cursor: pointer; font-size: 12px; font-family: inherit; }
+    .dbtn-green  { background: #48bb78; color: #fff; } .dbtn-green:hover  { background: #38a169; }
+    .dbtn-gray   { background: #718096; color: #fff; } .dbtn-gray:hover   { background: #4a5568; }
+    .dbtn-blue   { background: #4299e1; color: #fff; } .dbtn-blue:hover   { background: #3182ce; }
+    .dbtn-orange { background: #ed8936; color: #fff; } .dbtn-orange:hover { background: #dd6b20; }
+
+    /* ===== STAFF TYPE BADGE ===== */
+    .staff-type-badge {
+      display: inline-block; font-size: 9px; padding: 0 3px;
+      border-radius: 2px; margin-right: 3px; line-height: 14px;
+      background: #1e3a5f; color: #fff; font-weight: bold; vertical-align: middle;
+    }
+    .staff-type-sel {
+      font-size: 11px; padding: 2px 4px; border: 1px solid #c8cdd5;
+      border-radius: 4px; font-family: inherit; color: #333; background: #f4f6fa; cursor: pointer;
+    }
+    #newStaffType {
+      padding: 7px 6px; border: 1px solid #c0c8d4; border-radius: 5px;
+      font-size: 12px; font-family: inherit; outline: none; background: #fff; cursor: pointer;
+    }
+
+    /* ===== STAFF DIALOG ===== */
+    #staffDialog { width: 520px; }
+    .add-row { display: flex; gap: 8px; flex-shrink: 0; }
+    #newStaffInput {
+      flex: 1; padding: 7px 9px; border: 1px solid #c0c8d4;
+      border-radius: 5px; font-size: 13px; font-family: inherit; outline: none;
+    }
+    #newStaffInput:focus { border-color: #4a90d9; box-shadow: 0 0 0 3px rgba(74,144,217,0.15); }
+
+    #staffListEl { overflow-y: auto; flex: 1; border: 1px solid #dde1e7; border-radius: 6px; max-height: 440px; }
+
+    .staff-item { border-bottom: 1px solid #f0f2f5; }
+    .staff-item:last-child { border-bottom: none; }
+    .staff-item-header {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 9px; cursor: default;
+    }
+    .staff-item-header:hover { background: #f7f9fc; }
+    .si-index { font-size: 10px; color: #aaa; min-width: 18px; }
+    .si-name  { flex: 1; font-size: 13px; font-weight: bold; }
+    .si-btn {
+      background: none; border: 1px solid #c0c8d4; border-radius: 3px;
+      cursor: pointer; padding: 2px 6px; font-size: 11px; color: #555;
+    }
+    .si-btn:hover { background: #f0f2f5; }
+    .si-btn:disabled { opacity: 0.3; cursor: default; }
+    .si-del { color: #c53030; border-color: #fed7d7; }
+    .si-del:hover { background: #fff5f5; }
+    .si-skill-toggle {
+      font-size: 10px; background: #e8f0fb; border: 1px solid #b8ccee;
+      border-radius: 3px; padding: 2px 6px; cursor: pointer; color: #2c5282;
+    }
+    .si-skill-toggle:hover { background: #d0e3f8; }
+
+    /* Skill panel */
+    .skill-panel { padding: 8px 12px 10px 36px; background: #f8fafc; border-top: 1px solid #edf0f5; display: none; }
+    .skill-panel.open { display: block; }
+    .skill-section-title { font-size: 11px; font-weight: bold; color: #2c5282; margin: 8px 0 5px; }
+    .skill-section-title:first-child { margin-top: 0; }
+    .skill-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+    .skill-chip {
+      padding: 3px 8px; border-radius: 4px; border: 2px solid transparent;
+      cursor: pointer; font-size: 11px; font-weight: bold;
+      opacity: 0.35; transition: opacity 0.15s, border-color 0.15s;
+    }
+    .skill-chip.active { opacity: 1; border-color: rgba(0,0,0,0.25); }
+    .skill-sat-row { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #555; margin-top: 4px; }
+    .skill-sat-row input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; }
+
+    /* 定休日 曜日チップ */
+    .dow-chip {
+      display: inline-block; width: 28px; height: 24px; line-height: 24px;
+      text-align: center; border-radius: 4px; border: 2px solid transparent;
+      cursor: pointer; font-size: 12px; font-weight: bold;
+      background: #edf2f7; color: #718096;
+      opacity: 0.45; transition: opacity 0.15s, border-color 0.15s;
+    }
+    .dow-chip.active       { opacity: 1; border-color: #718096; background: #e2e8f0; color: #2d3748; }
+    .dow-chip.active.sat   { background: #bee3f8; border-color: #3182ce; color: #1a4a80; }
+    .dow-chip.active.sun   { background: #fed7d7; border-color: #e53e3e; color: #9b2c2c; }
+
+    /* 希望休 */
+    .req-off-section { margin-top: 2px; }
+    .skill-wage-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+    .wage-input { width: 80px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .req-off-add-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .req-off-date-input {
+      padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px;
+      font-size: 12px; font-family: inherit; outline: none; color: #333;
+    }
+    .req-off-date-input:focus { border-color: #4a90d9; }
+    .req-off-add-btn {
+      padding: 4px 10px; background: #4299e1; color: #fff; border: none;
+      border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit;
+    }
+    .req-off-add-btn:hover { background: #3182ce; }
+    .req-off-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    .req-off-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #fffbdc; border: 1px solid #d4a000; border-radius: 12px;
+      padding: 2px 8px 2px 10px; font-size: 11px; color: #7a5c00;
+    }
+    .req-off-remove {
+      background: none; border: none; cursor: pointer;
+      color: #b8880a; font-size: 13px; line-height: 1; padding: 0;
+    }
+    .req-off-remove:hover { color: #c53030; }
+
+    /* ===== REQUIREMENTS DIALOG ===== */
+    #reqDialog { width: 540px; }
+    .req-table-wrap { overflow-x: auto; flex: 1; }
+    .req-table { border-collapse: collapse; width: 100%; }
+    .req-table th, .req-table td { border: 1px solid #dde1e7; padding: 6px 8px; text-align: center; font-size: 12px; }
+    .req-table th { background: #2c4f78; color: #fff; font-weight: bold; }
+    .req-table td:first-child { text-align: left; font-weight: bold; white-space: nowrap; }
+    .req-input {
+      width: 46px; padding: 4px 5px; border: 1px solid #c0c8d4;
+      border-radius: 4px; text-align: center; font-size: 12px;
+      font-family: inherit; outline: none;
+    }
+    .req-input:focus { border-color: #4a90d9; }
+    .req-note { font-size: 11px; color: #888; }
+
+    /* ===== AUTO-CREATE DIALOG ===== */
+    #autoDialog { width: 380px; }
+    .auto-option { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .auto-option input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+    .auto-note { font-size: 11px; color: #888; line-height: 1.6; }
+
+    /* ===== PRINT ===== */
+    @page { size: A4 landscape; margin: 6mm; }
+    @media print {
+      #app-header { display: none !important; }
+
+      /* 凡例：1行横並び・時刻あり・作業セクション非表示 */
+      #legend {
+        font-size: 6.5px;
+        padding: 2px 0 3px;
+        gap: 4px;
+        flex-wrap: nowrap;
+        border-bottom: 1px solid #bbb;
+        border-top: none;
+        background: #fff;
+        overflow: visible;
+      }
+      .leg-chip  { font-size: 6.5px; gap: 2px; }
+      .leg-badge { font-size: 6.5px; padding: 0 3px; border-radius: 2px; }
+      .leg-time  { color: #555; font-size: 6px; }
+      .leg-label { font-size: 6.5px; }
+      .leg-divider { height: 10px; }
+      .leg-hint  { display: none; }
+      .leg-ws-section { display: none; }
+
+      /* 配送プレフィックスを非表示 */
+      .haiso-pfx { display: none; }
+
+      body { background: #fff; font-size: 7px; }
+      #table-container { padding: 0; overflow: visible; height: auto; }
+
+      /* テーブルをA4横幅に収める */
+      #shiftTable {
+        box-shadow: none;
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+      }
+      #shiftTable th, #shiftTable td {
+        padding: 1px 1px;
+        height: 14px;
+        font-size: 7px;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      /* 氏名列は固定幅・見やすく、日付列は残り幅を均等分配 */
+      .col-name  { width: 20mm; min-width: unset; max-width: unset; font-size: 8.5px; font-weight: bold; }
+      .dh-num, .dh-dow, .dh-month, .shift-cell { width: auto; min-width: unset; }
+      /* 休セルは白背景・文字なし */
+      .shift-rest { background: #fff !important; color: #fff !important; }
+      #shiftTable thead th { position: static; }
+      .skill-warn::after  { display: none; }
+      .cell-req-off::before { display: none; }
+
+      /* 集計列・集計行は非表示 */
+      #shiftTable tfoot { display: none !important; }
+      #shiftTable .col-sum { display: none !important; }
+
+      /* 備考欄 */
+      #biko-section {
+        margin: 4px 0 0;
+        border: 1px solid #999;
+        padding: 3px 5px;
+        font-size: 7px;
+        page-break-inside: avoid;
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      #biko-section .biko-label { font-weight: bold; font-size: 7px; white-space: nowrap; }
+      #biko-section textarea { display: none; }
+      #biko-section .biko-print-text {
+        display: block;
+        white-space: pre-wrap;
+        min-height: 30px;
+        font-size: 7px;
+        flex: 1;
+      }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<div id="app-header">
+  <h1>月間シフト表</h1>
+  <div class="month-nav">
+    <button id="prevMonthBtn">◀ 前期</button>
+    <span id="currentMonthLabel">—</span>
+    <button id="nextMonthBtn">次期 ▶</button>
+    <button class="hbtn hbtn-green" id="todayBtn">今期</button>
+  </div>
+  <div class="header-actions">
+    <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
+    <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
+    <button class="hbtn hbtn-ghost"  id="manageStaffBtn">スタッフ管理</button>
+    <button class="hbtn hbtn-ghost"  id="printBtn">印刷</button>
+    <button class="hbtn hbtn-ghost" id="syncBtn" title="Supabaseから最新データを読み込む" style="display:none;">↻ 同期</button>
+    <span id="syncStatus" style="font-size:10px; white-space:nowrap;"></span>
+  </div>
+</div>
+
+<!-- ===== LEGEND ===== -->
+<div id="legend"></div>
+
+<!-- ===== TABLE ===== -->
+<div id="table-container">
+  <table id="shiftTable"></table>
+</div>
+
+<!-- ===== BIKO SECTION ===== -->
+<div id="biko-section">
+  <span class="biko-label">備考</span>
+  <textarea id="bikoText" placeholder="早上がり等、印刷に記載したいメモを入力"></textarea>
+  <div class="biko-print-text" id="bikoPrintText"></div>
+</div>
+
+<!-- ===== SHIFT POPUP ===== -->
+<div id="shiftPopup">
+  <div class="popup-title" id="popupTitle"></div>
+  <div class="popup-info-row" id="popupInfoRow"></div>
+  <div class="popup-grid" id="popupGrid"></div>
+</div>
+
+<!-- ===== STAFF DIALOG ===== -->
+<div id="staffOverlay" class="modal-overlay">
+  <div id="staffDialog" class="modal-box">
+    <h2>スタッフ管理</h2>
+    <div class="add-row">
+      <input type="text" id="newStaffInput" placeholder="氏名を入力して追加" maxlength="20">
+      <select id="newStaffType">
+        <option value="パート">パート</option>
+        <option value="社員">社員(月給)</option>
+      </select>
+      <button class="dbtn dbtn-green" id="addStaffBtn">追加</button>
+    </div>
+    <div id="staffListEl"></div>
+    <div class="modal-footer">
+      <button class="dbtn dbtn-gray" id="closeStaffBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== REQUIREMENTS DIALOG ===== -->
+<div id="reqOverlay" class="modal-overlay">
+  <div id="reqDialog" class="modal-box">
+    <h2>作業要件設定</h2>
+    <p class="req-note">曜日ごとに各作業スキルの必要人数を設定します。0 = 不要。</p>
+    <div class="req-table-wrap">
+      <table class="req-table" id="reqTable"></table>
+    </div>
+    <div class="modal-footer">
+      <button class="dbtn dbtn-gray"  id="reqCancelBtn">キャンセル</button>
+      <button class="dbtn dbtn-blue"  id="reqSaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== AUTO-CREATE DIALOG ===== -->
+<div id="autoOverlay" class="modal-overlay">
+  <div id="autoDialog" class="modal-box">
+    <h2>自動シフト作成</h2>
+    <p style="font-size:12px;color:#555;">スタッフのシフトスキル・作業スキルと作業要件をもとにシフトを自動割り当てします。</p>
+    <div class="auto-option">
+      <input type="checkbox" id="optSatRest" checked>
+      <label for="optSatRest">土曜日は基本「休み」にする（個人設定で上書き可）</label>
+    </div>
+    <div class="auto-option">
+      <input type="checkbox" id="optSunRest" checked>
+      <label for="optSunRest">日曜・祝日は「休み」にする</label>
+    </div>
+    <div class="auto-option">
+      <input type="checkbox" id="optWorkSkill" checked>
+      <label for="optWorkSkill">作業要件を満たすよう優先調整する</label>
+    </div>
+    <div class="auto-option">
+      <input type="checkbox" id="optOverwrite" checked>
+      <label for="optOverwrite">既存のシフトを上書きする</label>
+    </div>
+    <p class="auto-note">
+      ※ シフトスキルが未設定のスタッフはスキップします。<br>
+      ※ 作業要件の調整：必要人数に達しない日は、該当スキル保持者の休みを出勤に変更します。<br>
+      ※ スキル設定は「スタッフ管理」から行ってください。
+    </p>
+    <div class="modal-footer">
+      <button class="dbtn dbtn-gray"   id="autoCancelBtn">キャンセル</button>
+      <button class="dbtn dbtn-orange" id="autoRunBtn">作成する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* =====================================================
+   SUPABASE 設定（使用しない場合は空欄のまま）
+===================================================== */
+const SUPABASE_URL      = 'https://ubiozikmsizlocqptgpy.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViaW96aWttc2l6bG9jcXB0Z3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNjc4NjMsImV4cCI6MjA5MTc0Mzg2M30.M4euQg5v90jcARJpqLdhj75g9wulqyrmb7zmpXnFaBw';
+const _supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+/* =====================================================
+   CONSTANTS
+===================================================== */
+const SHIFTS = [
+  { code: '早①', label: '早番①', time: '9:00～18:00',  h: 9,   bg: '#b8efb8', fg: '#185c18' },
+  { code: '早②', label: '早番②', time: '9:00～16:00',  h: 7,   bg: '#d4efaa', fg: '#286010' },
+  { code: '早③', label: '早番③', time: '9:00～14:30',  h: 5.5, bg: '#f4ee9c', fg: '#585800' },
+  { code: '早④', label: '早番④', time: '9:00～17:00',  h: 8,   bg: '#e8f4b4', fg: '#3c5800' },
+  { code: '中①', label: '中番①', time: '13:00～20:00', h: 7,   bg: '#a4d8f6', fg: '#0a3c6c' },
+  { code: '中②', label: '中番②', time: '14:00～20:00', h: 6,   bg: '#b4c6f6', fg: '#1a2c8c' },
+  { code: '遅①', label: '遅番①', time: '16:00～20:00', h: 4,   bg: '#f8ce98', fg: '#884400' },
+  { code: '通し', label: '通し',   time: '9:00～20:00',  h: 11,  bg: '#e6b4f6', fg: '#5c1888' },
+  { code: '在',   label: '在宅',   time: '9:00～18:00',  h: 9,   bg: '#c8f0e8', fg: '#1a5c48' },
+  { code: '誕',   label: '誕生日休暇', time: '-',        h: 0,   bg: '#fce4ec', fg: '#c2185b' },
+  { code: '配送①', label: '配送①', time: '3:00～12:00', h: 9,   bg: '#b3d9ff', fg: '#003580' },
+  { code: '配送②', label: '配送②', time: '3:00～12:00', h: 9,   bg: '#90c8ff', fg: '#002570' },
+  { code: '配送③', label: '配送③', time: '3:00～12:00', h: 9,   bg: '#c8e8ff', fg: '#004090' },
+  { code: '配送④', label: '配送④', time: '3:00～12:00', h: 9,   bg: '#7ab8ff', fg: '#001f60' },
+  { code: '集荷',  label: '集荷',   time: '9:00～12:00',  h: 3,   bg: '#ffd6a5', fg: '#7a3500' },
+  { code: '休',    label: '休み',   time: '-',            h: 0,   bg: '#d4d4d4', fg: '#484848' },
+];
+const SKILL_SHIFTS = SHIFTS.slice(0, -1);
+const SHIFT_MAP    = Object.fromEntries(SHIFTS.map(s => [s.code, s]));
+const DOW_JA       = ['日','月','火','水','木','金','土'];
+
+/** 労働基準法に準拠した休憩時間(h): 6h以上→0.75h、8h以上→1h */
+function getBreakH(rawH) {
+  if (rawH >= 8) return 1;
+  if (rawH >= 6) return 0.75;
+  return 0;
+}
+/** 実労働時間 = 拘束時間 - 休憩時間 */
+function getPaidH(rawH) { return rawH - getBreakH(rawH); }
+
+// 作業スキル
+const WORK_SKILLS = ['調整作業', 'プライス貼り', 'EC', '西友', '配送', '営業', '総務経理'];
+const WS_STYLE = {
+  '調整作業':    { bg: '#fde8c8', fg: '#7a3000', abbr: '調' },
+  'プライス貼り': { bg: '#f9d6f5', fg: '#6a0060', abbr: 'プ' },
+  'EC':          { bg: '#d1fae5', fg: '#065f46', abbr: 'EC' },
+  '西友':        { bg: '#dbeafe', fg: '#1e3a8a', abbr: '西' },
+  '配送':        { bg: '#b3d9ff', fg: '#003580', abbr: '配' },
+  '営業':        { bg: '#fde68a', fg: '#78350f', abbr: '営' },
+  '総務経理':    { bg: '#e9d5ff', fg: '#5b21b6', abbr: '総' },
+};
+
+const HOLIDAYS = {
+  '2025-01-01':'元旦','2025-01-13':'成人の日','2025-02-11':'建国記念日',
+  '2025-02-23':'天皇誕生日','2025-02-24':'天皇誕生日振替','2025-03-20':'春分の日',
+  '2025-04-29':'昭和の日','2025-05-03':'憲法記念日','2025-05-04':'みどりの日',
+  '2025-05-05':'こどもの日','2025-05-06':'こどもの日振替','2025-07-21':'海の日',
+  '2025-08-11':'山の日','2025-09-15':'敬老の日','2025-09-23':'秋分の日',
+  '2025-10-13':'スポーツの日','2025-11-03':'文化の日','2025-11-23':'勤労感謝の日',
+  '2025-11-24':'勤労感謝の日振替',
+  '2026-01-01':'元旦','2026-01-12':'成人の日','2026-02-11':'建国記念日',
+  '2026-02-23':'天皇誕生日','2026-03-20':'春分の日','2026-04-29':'昭和の日',
+  '2026-05-03':'憲法記念日','2026-05-04':'みどりの日','2026-05-05':'こどもの日',
+  '2026-07-20':'海の日','2026-08-11':'山の日','2026-09-21':'敬老の日',
+  '2026-09-22':'敬老の日振替','2026-09-23':'秋分の日','2026-10-12':'スポーツの日',
+  '2026-11-03':'文化の日','2026-11-23':'勤労感謝の日',
+};
+
+/* =====================================================
+   STATE  (期間: currentYear/currentMonth の 16日 〜 翌月15日)
+===================================================== */
+let currentYear  = 2026;
+let currentMonth = 1;
+let staffList    = [];
+let shiftData    = {};  // { periodKey: { name: { 'YYYY-MM-DD': code } } }
+let staffSkills  = {};  // { name: { shifts: string[], workSat: bool, workSkills: string[] } }
+let workSkillReqs = {}; // { wsName: { dow(0-6): count } }
+let bikoNotes     = {}; // { periodKey: string }
+
+let popupTarget = null;
+
+/* =====================================================
+   STORAGE
+===================================================== */
+function loadData() {
+  try {
+    const d = JSON.parse(localStorage.getItem('shiftAppV4') || '{}');
+    staffList     = Array.isArray(d.staffList)                           ? d.staffList     : defaultStaff();
+    shiftData     = typeof d.shiftData    === 'object' && d.shiftData    ? d.shiftData     : {};
+    staffSkills   = typeof d.staffSkills  === 'object' && d.staffSkills  ? d.staffSkills   : {};
+    workSkillReqs = typeof d.workSkillReqs=== 'object' && d.workSkillReqs? d.workSkillReqs : defaultReqs();
+    bikoNotes     = typeof d.bikoNotes    === 'object' && d.bikoNotes    ? d.bikoNotes     : {};
+    // 旧「配送」コードを「配送①」へ移行
+    Object.values(shiftData).forEach(pd => {
+      Object.values(pd).forEach(nd => {
+        Object.keys(nd).forEach(dk => { if (nd[dk] === '配送') nd[dk] = '配送①'; });
+      });
+    });
+    Object.values(staffSkills).forEach(sk => {
+      if (sk.shifts) sk.shifts = sk.shifts.map(c => c === '配送' ? '配送①' : c);
+    });
+  } catch {
+    staffList = defaultStaff();
+    shiftData = {}; staffSkills = {};
+    workSkillReqs = defaultReqs();
+  }
+}
+function _saveLocal() {
+  localStorage.setItem('shiftAppV4', JSON.stringify({ staffList, shiftData, staffSkills, workSkillReqs, bikoNotes }));
+}
+function saveData() {
+  _saveLocal();
+  saveDataToSupabase(); // 非同期・失敗してもlocalStorageは影響なし
+}
+
+/* =====================================================
+   SUPABASE SYNC
+===================================================== */
+function setSyncStatus(state) {
+  if (!_supabase) return;
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const map = {
+    syncing: { text: '同期中…',    color: '#aaa' },
+    ok:      { text: '✓ 同期済み', color: '#4caf50' },
+    error:   { text: '✗ 同期エラー', color: '#f44336' },
+  };
+  const s = map[state] || {};
+  el.textContent = s.text ?? '';
+  el.style.color  = s.color ?? '';
+}
+
+async function saveDataToSupabase() {
+  if (!_supabase) return;
+  try {
+    const { error } = await _supabase
+      .from('shift_app_data')
+      .upsert({ id: 'main', data: { staffList, shiftData, staffSkills, workSkillReqs, bikoNotes }, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    setSyncStatus('ok');
+  } catch (e) {
+    console.error('[Supabase] save error:', e);
+    setSyncStatus('error');
+  }
+}
+
+async function loadDataFromSupabase() {
+  if (!_supabase) return false;
+  setSyncStatus('syncing');
+  try {
+    const { data: row, error } = await _supabase
+      .from('shift_app_data')
+      .select('data, updated_at')
+      .eq('id', 'main')
+      .single();
+    if (error) throw error;
+    if (!row?.data) return false;
+    const d = row.data;
+    if (Array.isArray(d.staffList))                                        staffList     = d.staffList;
+    if (typeof d.shiftData     === 'object' && d.shiftData)                shiftData     = d.shiftData;
+    if (typeof d.staffSkills   === 'object' && d.staffSkills)              staffSkills   = d.staffSkills;
+    if (typeof d.workSkillReqs === 'object' && d.workSkillReqs)            workSkillReqs = d.workSkillReqs;
+    if (typeof d.bikoNotes     === 'object' && d.bikoNotes)                bikoNotes     = d.bikoNotes;
+    // 旧データ移行を再適用
+    Object.values(shiftData).forEach(pd =>
+      Object.values(pd).forEach(nd =>
+        Object.keys(nd).forEach(dk => { if (nd[dk] === '配送') nd[dk] = '配送①'; })));
+    Object.values(staffSkills).forEach(sk => {
+      if (sk.shifts) sk.shifts = sk.shifts.map(c => c === '配送' ? '配送①' : c);
+    });
+    _saveLocal(); // localStorageにも反映（saveDataToSupabaseの二重呼び出しを避ける）
+    renderTable();
+    setSyncStatus('ok');
+    return true;
+  } catch (e) {
+    console.error('[Supabase] load error:', e);
+    setSyncStatus('error');
+    return false;
+  }
+}
+
+function defaultStaff() { return ['スタッフ1','スタッフ2','スタッフ3']; }
+function defaultReqs() {
+  const r = {};
+  WORK_SKILLS.forEach(ws => { r[ws] = { 0:0,1:1,2:1,3:1,4:1,5:1,6:0 }; });
+  return r;
+}
+
+/* =====================================================
+   HELPERS
+===================================================== */
+function pad2(n) { return String(n).padStart(2,'0'); }
+function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+function periodKey() { return `${currentYear}-${pad2(currentMonth)}-16`; }
+function dateStr(y, m, d) { return `${y}-${pad2(m)}-${pad2(d)}`; }
+function dayOfWeek(y, m, d) { return new Date(y, m-1, d).getDay(); }
+function isHoliday(y, m, d) { return dateStr(y,m,d) in HOLIDAYS; }
+
+function dayClass(y, m, d) {
+  const dow = dayOfWeek(y, m, d);
+  if (isHoliday(y, m, d)) return 'd-hol';
+  if (dow === 0) return 'd-sun';
+  if (dow === 6) return 'd-sat';
+  return '';
+}
+
+function getPeriodDays() {
+  const y1 = currentYear, m1 = currentMonth;
+  let y2 = y1, m2 = m1 + 1;
+  if (m2 > 12) { m2 = 1; y2++; }
+  const days = [];
+  for (let d = 16; d <= daysInMonth(y1, m1); d++) days.push({ y: y1, m: m1, d });
+  for (let d = 1;  d <= 15;                  d++) days.push({ y: y2, m: m2, d });
+  return days;
+}
+
+function getShift(staff, dayObj) {
+  const pk = periodKey();
+  const dk = dateStr(dayObj.y, dayObj.m, dayObj.d);
+  return shiftData[pk]?.[staff]?.[dk] ?? '';
+}
+function setShift(staff, dayObj, code) {
+  const pk = periodKey(), dk = dateStr(dayObj.y, dayObj.m, dayObj.d);
+  if (!shiftData[pk])        shiftData[pk] = {};
+  if (!shiftData[pk][staff]) shiftData[pk][staff] = {};
+  if (code === '') delete shiftData[pk][staff][dk];
+  else             shiftData[pk][staff][dk] = code;
+  saveData();
+}
+
+function getShiftSkills(name)      { return staffSkills[name]?.shifts        ?? []; }
+function getWorkSkills(name)       { return staffSkills[name]?.workSkills     ?? []; }
+function getWorkSat(name)          { return staffSkills[name]?.workSat        ?? false; }
+function getRegularDaysOff(name)   { return staffSkills[name]?.regularDaysOff ?? []; }   // array of DOW (0-6)
+function getRequestedDaysOff(name) { return staffSkills[name]?.requestedDaysOff ?? []; } // array of 'YYYY-MM-DD'
+function getStaffType(name)        { return staffSkills[name]?.type           ?? 'パート'; } // 'パート' | '社員'
+function hasShiftSkill(name, code) { return getShiftSkills(name).includes(code); }
+
+function isRegularDayOff(name, y, m, d) {
+  return getRegularDaysOff(name).includes(dayOfWeek(y, m, d));
+}
+function isRequestedDayOff(name, y, m, d) {
+  return getRequestedDaysOff(name).includes(dateStr(y, m, d));
+}
+
+function getWsReq(ws, dow) { return workSkillReqs[ws]?.[dow] ?? 0; }
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function getPeriodLabel() {
+  const y1 = currentYear, m1 = currentMonth;
+  let y2 = y1, m2 = m1 + 1;
+  if (m2 > 12) { m2 = 1; y2++; }
+  return y1 === y2
+    ? `${y1}年${m1}月16日〜${m2}月15日`
+    : `${y1}年${m1}月16日〜${y2}年${m2}月15日`;
+}
+
+/* =====================================================
+   LEGEND
+===================================================== */
+function renderLegend() {
+  const el = document.getElementById('legend');
+  // 画面・印刷ともに早①～誕（インデックス 0-9）のみ表示
+  const shiftChips = SHIFTS.slice(0, 10).map(s => {
+    const disp = s.code === '誕' ? '🎂' : esc(s.code);
+    const timeStr = s.time !== '-' ? `<span class="leg-time"> ${esc(s.time)}</span>` : '';
+    return `<span class="leg-chip">
+      <span class="leg-badge" style="background:${s.bg};color:${s.fg};">${disp}</span>
+      ${esc(s.label)}${timeStr}
+    </span>`;
+  }).join('');
+  const wsChips = WORK_SKILLS.map(ws => {
+    const st = WS_STYLE[ws];
+    return `<span class="leg-chip">
+      <span class="leg-badge" style="background:${st.bg};color:${st.fg};">${esc(st.abbr)}</span>
+      ${esc(ws)}
+    </span>`;
+  }).join('');
+
+  el.innerHTML =
+    `<span class="leg-label">シフト:</span>${shiftChips}` +
+    `<span class="leg-ws-section"><span class="leg-divider"></span>` +
+    `<span class="leg-label">作業:</span>${wsChips}</span>` +
+    `<span class="leg-hint">左クリック: シフト選択　右クリック: クリア（確認あり）　⚠: スキル外</span>`;
+}
+
+/* =====================================================
+   BIKO (NOTES)
+===================================================== */
+function renderBiko() {
+  const pk = periodKey();
+  const ta = document.getElementById('bikoText');
+  const pt = document.getElementById('bikoPrintText');
+  if (!ta || !pt) return;
+  ta.value = bikoNotes[pk] || '';
+  pt.textContent = bikoNotes[pk] || '';
+}
+
+/* =====================================================
+   TABLE RENDER
+===================================================== */
+function renderTable() {
+  document.getElementById('currentMonthLabel').textContent = getPeriodLabel();
+
+  const periodDays = getPeriodDays();
+  const pk   = periodKey();
+  const mdata = shiftData[pk] || {};
+
+  /* --- per-day totals --- */
+  const workCount  = {};
+  const shiftCount = {};
+  const wsCount    = {}; // { dk: { wsName: count } }
+
+  periodDays.forEach(day => {
+    const dk = dateStr(day.y, day.m, day.d);
+    workCount[dk]  = 0;
+    shiftCount[dk] = {};
+    wsCount[dk]    = {};
+    WORK_SKILLS.forEach(ws => { wsCount[dk][ws] = 0; });
+  });
+
+  staffList.forEach(name => {
+    const sdata    = mdata[name] || {};
+    const wsSkills = getWorkSkills(name);
+    periodDays.forEach(day => {
+      const dk = dateStr(day.y, day.m, day.d);
+      const c  = sdata[dk] || '';
+      if (c && c !== '休') {
+        workCount[dk]++;
+        // count work skill coverage for working days
+        wsSkills.forEach(ws => { wsCount[dk][ws]++; });
+      }
+      if (c) shiftCount[dk][c] = (shiftCount[dk][c] || 0) + 1;
+    });
+  });
+
+  /* --- per-staff totals --- */
+  const staffWork = staffList.map(name => {
+    const sdata = mdata[name] || {};
+    let workDays = 0, totalHours = 0;
+    const counts = {};
+    SHIFTS.forEach(s => { counts[s.code] = 0; });
+    periodDays.forEach(day => {
+      const dk = dateStr(day.y, day.m, day.d);
+      const c  = sdata[dk] || '';
+      if (c && c !== '休') workDays++;
+      if (c) {
+        counts[c] = (counts[c] || 0) + 1;
+        totalHours += getPaidH(SHIFT_MAP[c]?.h ?? 0);
+      }
+    });
+    return { workDays, totalHours, counts };
+  });
+
+  /* --- build span data for month-label row --- */
+  const spanData = [];
+  let prevM = null, spanStart = 0;
+  periodDays.forEach((day, i) => {
+    if (day.m !== prevM) {
+      if (prevM !== null) spanData.push({ y: periodDays[spanStart].y, m: prevM, count: i - spanStart, boundary: spanStart > 0 });
+      spanStart = i;
+      prevM = day.m;
+    }
+    if (i === periodDays.length - 1) {
+      spanData.push({ y: day.y, m: day.m, count: periodDays.length - spanStart, boundary: spanStart > 0 });
+    }
+  });
+
+  /* --- summary col headers --- */
+  const sumHdr   = SKILL_SHIFTS.map(s =>
+    `<th class="col-sum" style="background:${s.bg};color:${s.fg};" title="${esc(s.label)}">${esc(s.code)}</th>`
+  ).join('') + `<th class="col-sum col-sum-hours" title="月間総労働時間">時間</th><th class="col-sum col-sum-budget" title="月間人件費">予算</th>`;
+  const sumEmpty = SKILL_SHIFTS.map(() => `<th class="col-sum"></th>`).join('') + `<th class="col-sum"></th><th class="col-sum"></th>`;
+
+  /* ---- THEAD ---- */
+  let html = '<thead>';
+
+  // Month labels row
+  html += '<tr>';
+  html += `<th class="col-name dh-month" rowspan="3">氏名</th>`;
+  spanData.forEach(s => {
+    html += `<th class="dh-month${s.boundary ? ' month-boundary' : ''}" colspan="${s.count}">${s.y}年${s.m}月</th>`;
+  });
+  html += `<th class="col-sum dh-month col-sum-total">計</th>${sumEmpty}</tr>`;
+
+  // Day numbers row
+  html += '<tr>';
+  periodDays.forEach((day, i) => {
+    const dc  = dayClass(day.y, day.m, day.d);
+    const hol = isHoliday(day.y, day.m, day.d) ? HOLIDAYS[dateStr(day.y, day.m, day.d)] : '';
+    const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
+    html += `<th class="dh-num ${dc}${bnd}"${hol ? ` title="${esc(hol)}"` : ''}>${day.d}</th>`;
+  });
+  html += `<th class="col-sum col-sum-total">日数</th>${sumEmpty}</tr>`;
+
+  // Day of week row
+  html += '<tr>';
+  periodDays.forEach((day, i) => {
+    const dc  = dayClass(day.y, day.m, day.d);
+    const dow = dayOfWeek(day.y, day.m, day.d);
+    const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
+    html += `<th class="dh-dow ${dc}${bnd}">${DOW_JA[dow]}</th>`;
+  });
+  html += `<th class="col-sum"></th>${sumEmpty}</tr>`;
+  html += '</thead>';
+
+  /* ---- TBODY ---- */
+  html += '<tbody>';
+  staffList.forEach((name, idx) => {
+    const sdata      = mdata[name] || {};
+    const sw         = staffWork[idx];
+    const shiftSkls  = getShiftSkills(name);
+    const wsSkls     = getWorkSkills(name);
+    const rowBg      = idx % 2 === 0 ? '' : ' style="background:#fafbfd;"';
+
+    const isEmployee = getStaffType(name) === '社員';
+    html += `<tr${rowBg}>`;
+    html += `<td class="col-name">${esc(name)}</td>`;
+
+    periodDays.forEach((day, i) => {
+      const dk    = dateStr(day.y, day.m, day.d);
+      const code  = sdata[dk] || '';
+      const shift = code ? SHIFT_MAP[code] : null;
+      const dc    = dayClass(day.y, day.m, day.d);
+      const bnd   = i > 0 && day.d === 1 ? ' month-boundary' : '';
+
+      const mismatch = code && code !== '休' && shiftSkls.length > 0 && !shiftSkls.includes(code);
+      const warnCls  = mismatch ? ' skill-warn' : '';
+      const cellStyle = shift ? `background:${shift.bg};color:${shift.fg};` : '';
+      const cellDcCls = shift ? '' : dc;
+
+      // 定休日・希望休インジケーター（セルが空のときのみ）
+      let offCls = '';
+      if (!code) {
+        if (isRegularDayOff(name, day.y, day.m, day.d))   offCls = ' cell-reg-off';
+        else if (isRequestedDayOff(name, day.y, day.m, day.d)) offCls = ' cell-req-off';
+      }
+
+      // tooltip
+      const regOff = isRegularDayOff(name, day.y, day.m, day.d);
+      const reqOff = isRequestedDayOff(name, day.y, day.m, day.d);
+      const tipParts = [];
+      if (regOff) tipParts.push('定休日');
+      if (reqOff) tipParts.push('希望休');
+      const tipAttr = tipParts.length ? ` title="${tipParts.join(' / ')}"` : '';
+
+      const restCls = code === '休' ? ' shift-rest' : '';
+      const cellContent = code === '休' ? '' : code === '誕' ? '🎂' : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
+      html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${bnd}"` +
+              ` data-si="${idx}" data-di="${i}"` +
+              ` style="${cellStyle}"${tipAttr}>${cellContent}</td>`;
+    });
+
+    html += `<td class="col-sum col-sum-total">${sw.workDays || ''}</td>`;
+    SKILL_SHIFTS.forEach(s => {
+      const n = sw.counts[s.code] || 0;
+      html += `<td class="col-sum" style="${n > 0 ? `background:${s.bg};color:${s.fg};` : ''}">${n > 0 ? n : ''}</td>`;
+    });
+    // 時間列（実労働時間：休憩控除済み）
+    const hDisp = sw.totalHours > 0 ? (sw.totalHours % 1 === 0 ? sw.totalHours : sw.totalHours.toFixed(1)) : '';
+    const hOver = sw.totalHours > 171;
+    const hTip  = hOver ? `月171時間超過 (実労働${sw.totalHours.toFixed(1)}h)` : `実労働時間 ${sw.totalHours.toFixed(1)}h (休憩控除済み)`;
+    html += `<td class="col-sum col-sum-hours${hOver ? ' hours-over' : ''}" title="${hTip}">${hDisp}</td>`;
+    // 予算列
+    const wage = staffSkills[name]?.hourlyWage ?? 0;
+    const budget = wage > 0 ? Math.round(sw.totalHours * wage) : 0;
+    html += `<td class="col-sum col-sum-budget">${budget > 0 ? budget.toLocaleString() + '円' : ''}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody>';
+
+  /* --- grand totals for tfoot --- */
+  const grandTotalHours  = staffWork.reduce((s, sw) => s + sw.totalHours, 0);
+  const grandTotalBudget = staffList.reduce((s, name, idx) => {
+    const w = staffSkills[name]?.hourlyWage ?? 0;
+    return s + (w > 0 ? Math.round(staffWork[idx].totalHours * w) : 0);
+  }, 0);
+  const footExtra = () => `<td class="col-sum"></td><td class="col-sum"></td>`;
+
+  /* ---- TFOOT ---- */
+  html += '<tfoot>';
+
+  // 勤務計
+  html += '<tr>';
+  html += `<th class="col-name">勤務計</th>`;
+  periodDays.forEach((day, i) => {
+    const dk  = dateStr(day.y, day.m, day.d);
+    const n   = workCount[dk];
+    const dc  = dayClass(day.y, day.m, day.d);
+    const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
+    html += `<td class="${dc}${bnd} tfoot-work-count">${n > 0 ? n : ''}</td>`;
+  });
+  const gHDisp = grandTotalHours > 0 ? (grandTotalHours % 1 === 0 ? grandTotalHours : grandTotalHours.toFixed(1)) : '';
+  html += `<td class="col-sum"></td>${SKILL_SHIFTS.map(() => '<td class="col-sum"></td>').join('')}<td class="col-sum col-sum-hours" style="font-weight:bold;">${gHDisp}</td><td class="col-sum col-sum-budget" style="font-weight:bold;">${grandTotalBudget > 0 ? grandTotalBudget.toLocaleString() + '円' : ''}</td></tr>`;
+
+  // Per-shift counts
+  SHIFTS.forEach(s => {
+    html += '<tr>';
+    html += `<th class="col-name" style="background:${s.bg};color:${s.fg};">${esc(s.code)}</th>`;
+    periodDays.forEach((day, i) => {
+      const dk  = dateStr(day.y, day.m, day.d);
+      const n   = shiftCount[dk][s.code] || 0;
+      const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
+      html += `<td class="${bnd}" style="${n > 0 ? `background:${s.bg};color:${s.fg};font-weight:bold;` : ''}">${n > 0 ? n : ''}</td>`;
+    });
+    html += `<td class="col-sum"></td>${SKILL_SHIFTS.map(() => '<td class="col-sum"></td>').join('')}${footExtra()}</tr>`;
+  });
+
+  // ---- Work skill coverage rows ----
+  // Separator row
+  html += `<tr><th class="col-name" colspan="${periodDays.length + 1 + SKILL_SHIFTS.length + 2}" style="background:#1e3a5f;color:#fff;font-size:10px;text-align:left;padding-left:8px;">▼ 作業スキルカバレッジ（実績 / 必要）</th></tr>`;
+
+  WORK_SKILLS.forEach(ws => {
+    const st = WS_STYLE[ws];
+    html += '<tr>';
+    html += `<th class="col-name" style="background:${st.bg};color:${st.fg};">${esc(ws)}</th>`;
+    periodDays.forEach((day, i) => {
+      const dk   = dateStr(day.y, day.m, day.d);
+      const dow  = dayOfWeek(day.y, day.m, day.d);
+      const req  = getWsReq(ws, dow);
+      const act  = wsCount[dk][ws] || 0;
+      const bnd  = i > 0 && day.d === 1 ? ' month-boundary' : '';
+      let cls = 'ws-zero', txt = act > 0 ? String(act) : '';
+
+      if (req > 0) {
+        cls = act >= req ? 'ws-ok' : 'ws-ng';
+        txt = act >= req ? String(act) : `${act}/${req}`;
+      }
+      html += `<td class="${cls}${bnd}" title="${esc(ws)}: 実${act} 要${req}">${txt}</td>`;
+    });
+    html += `<td class="col-sum"></td>${SKILL_SHIFTS.map(() => '<td class="col-sum"></td>').join('')}${footExtra()}</tr>`;
+  });
+
+  html += '</tfoot>';
+
+  document.getElementById('shiftTable').innerHTML = html;
+  renderBiko();
+}
+
+/* =====================================================
+   TABLE EVENTS
+===================================================== */
+document.getElementById('shiftTable').addEventListener('click', e => {
+  const cell = e.target.closest('.shift-cell');
+  if (!cell) return;
+  e.stopPropagation();
+  const si = parseInt(cell.dataset.si, 10);
+  const di = parseInt(cell.dataset.di, 10);
+  openPopup(e, staffList[si], getPeriodDays()[di], cell);
+});
+
+document.getElementById('shiftTable').addEventListener('contextmenu', e => {
+  const cell = e.target.closest('.shift-cell');
+  if (!cell) return;
+  e.preventDefault();
+  if (!confirm('シフトをクリアしますか？')) return;
+  const si = parseInt(cell.dataset.si, 10);
+  const di = parseInt(cell.dataset.di, 10);
+  setShift(staffList[si], getPeriodDays()[di], '');
+  renderTable();
+});
+
+/* =====================================================
+   POPUP
+===================================================== */
+function openPopup(e, staff, dayObj, targetEl) {
+  popupTarget = { staff, dayObj };
+  const { y, m, d } = dayObj;
+  const dow     = dayOfWeek(y, m, d);
+  const holName = HOLIDAYS[dateStr(y, m, d)] || '';
+  const current = getShift(staff, dayObj);
+  const shiftSkls = getShiftSkills(staff);
+  const wsSkls    = getWorkSkills(staff);
+
+  document.getElementById('popupTitle').textContent =
+    `${m}月${d}日（${DOW_JA[dow]}）${holName ? '★' + holName + '　' : ''}${staff}`;
+
+  // Info row: shift skills + work skills
+  const infoEl = document.getElementById('popupInfoRow');
+  let infoHtml = '';
+  if (shiftSkls.length > 0) {
+    infoHtml += `<span>シフト: ${shiftSkls.map(c => { const s = SHIFT_MAP[c]; return `<span style="background:${s?.bg};color:${s?.fg};padding:0 4px;border-radius:2px;font-weight:bold;">${esc(c)}</span>`; }).join(' ')}</span>`;
+  }
+  if (wsSkls.length > 0) {
+    infoHtml += `<span>作業: ${wsSkls.map(ws => { const st = WS_STYLE[ws]; return `<span style="background:${st.bg};color:${st.fg};padding:0 4px;border-radius:2px;font-weight:bold;">${esc(ws)}</span>`; }).join(' ')}</span>`;
+  }
+  infoEl.innerHTML = infoHtml;
+
+  const grid = document.getElementById('popupGrid');
+  grid.innerHTML =
+    SHIFTS.map(s => {
+      const noSkill = s.code !== '休' && shiftSkls.length > 0 && !shiftSkls.includes(s.code);
+      const btnLabel = s.code === '誕' ? '🎂' : esc(s.code);
+      const btnTime  = s.time !== '-' ? `<small>${esc(s.time)}</small>` : '';
+      return `<button class="popup-shift-btn${noSkill ? ' no-skill' : ''}"
+        data-code="${esc(s.code)}"
+        style="background:${s.bg};color:${s.fg};${current === s.code ? 'outline:2px solid rgba(0,0,0,0.5);' : ''}"
+        title="${esc(s.label)} ${esc(s.time)}${noSkill ? ' ※スキル外' : ''}">
+        ${btnLabel}${btnTime}
+      </button>`;
+    }).join('') +
+    `<button class="popup-clear-btn" data-code="">空白（クリア）</button>` +
+    `<button class="popup-cancel-btn" id="popupCancelBtn">キャンセル</button>`;
+
+  const popup = document.getElementById('shiftPopup');
+  popup.style.display = 'block';
+  const rect = targetEl.getBoundingClientRect();
+  let left = rect.left, top = rect.bottom + 6;
+  const pw = popup.offsetWidth, ph = popup.offsetHeight;
+  if (left + pw > window.innerWidth  - 8) left = window.innerWidth  - pw - 8;
+  if (top  + ph > window.innerHeight - 8) top  = rect.top - ph - 6;
+  if (left < 8) left = 8; if (top < 8) top = 8;
+  popup.style.left = left + 'px'; popup.style.top = top + 'px';
+
+  document.getElementById('popupCancelBtn').addEventListener('click', closePopup);
+}
+
+document.getElementById('popupGrid').addEventListener('click', e => {
+  const btn = e.target.closest('[data-code]');
+  if (!btn || !popupTarget) return;
+  setShift(popupTarget.staff, popupTarget.dayObj, btn.dataset.code);
+  renderTable();
+  closePopup();
+});
+
+function closePopup() {
+  document.getElementById('shiftPopup').style.display = 'none';
+  popupTarget = null;
+}
+
+document.addEventListener('click', e => {
+  const popup = document.getElementById('shiftPopup');
+  if (popup.style.display !== 'none' && !popup.contains(e.target)) closePopup();
+});
+
+/* =====================================================
+   MONTH NAVIGATION
+===================================================== */
+document.getElementById('prevMonthBtn').addEventListener('click', () => changeMonth(-1));
+document.getElementById('nextMonthBtn').addEventListener('click', () => changeMonth(1));
+document.getElementById('todayBtn').addEventListener('click', goToday);
+document.getElementById('printBtn').addEventListener('click', () => window.print());
+document.getElementById('bikoText').addEventListener('input', () => {
+  const pk = periodKey();
+  bikoNotes[pk] = document.getElementById('bikoText').value;
+  document.getElementById('bikoPrintText').textContent = bikoNotes[pk];
+  saveData();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closePopup(); closeModal('staffOverlay'); closeModal('reqOverlay'); closeModal('autoOverlay'); }
+});
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 12) { currentMonth = 1;  currentYear++; }
+  if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
+  renderTable();
+}
+function goToday() {
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth() + 1;
+  if (now.getDate() < 16) { m--; if (m < 1) { m = 12; y--; } }
+  currentYear = y; currentMonth = m;
+  renderTable();
+}
+
+/* =====================================================
+   MODAL HELPERS
+===================================================== */
+function openModal(id)  { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+document.getElementById('staffOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('staffOverlay')) closeStaffDialog();
+});
+document.getElementById('reqOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('reqOverlay')) closeModal('reqOverlay');
+});
+document.getElementById('autoOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('autoOverlay')) closeModal('autoOverlay');
+});
+
+/* =====================================================
+   AUTO-CREATE
+===================================================== */
+document.getElementById('autoCreateBtn').addEventListener('click', () => openModal('autoOverlay'));
+document.getElementById('autoCancelBtn').addEventListener('click', () => closeModal('autoOverlay'));
+document.getElementById('autoRunBtn').addEventListener('click', runAutoCreate);
+
+function runAutoCreate() {
+  closeModal('autoOverlay');
+
+  const optSatRest   = document.getElementById('optSatRest').checked;
+  const optSunRest   = document.getElementById('optSunRest').checked;
+  const optWorkSkill = document.getElementById('optWorkSkill').checked;
+  const optOverwrite = document.getElementById('optOverwrite').checked;
+
+  const pk   = periodKey();
+  const days = getPeriodDays();
+  if (!shiftData[pk]) shiftData[pk] = {};
+
+  // Phase 1: assign shifts based on shift skills
+  staffList.forEach(name => {
+    const skills  = getShiftSkills(name);
+    const workSat = getWorkSat(name);
+    if (skills.length === 0) return;
+
+    if (!shiftData[pk][name]) shiftData[pk][name] = {};
+
+    const rotation = shuffle([...skills]);
+    let rotIdx = 0;
+
+    days.forEach(day => {
+      const dk  = dateStr(day.y, day.m, day.d);
+      if (!optOverwrite && shiftData[pk][name][dk]) return;
+
+      const dow = dayOfWeek(day.y, day.m, day.d);
+      const sat = dow === 6;
+      const sun = dow === 0;
+      const hol = isHoliday(day.y, day.m, day.d);
+
+      if (optSunRest && (sun || hol))         { shiftData[pk][name][dk] = '休'; return; }
+      if (sat && optSatRest && !workSat)       { shiftData[pk][name][dk] = '休'; return; }
+      // 定休日・希望休 → 休
+      if (isRegularDayOff(name, day.y, day.m, day.d))   { shiftData[pk][name][dk] = '休'; return; }
+      if (isRequestedDayOff(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
+
+      shiftData[pk][name][dk] = rotation[rotIdx % rotation.length];
+      rotIdx++;
+      if (rotIdx > 0 && rotIdx % rotation.length === 0) shuffleInPlace(rotation);
+    });
+  });
+
+  // Phase 2: satisfy work skill requirements (if optWorkSkill)
+  if (optWorkSkill) {
+    days.forEach(day => {
+      const dk  = dateStr(day.y, day.m, day.d);
+      const dow = dayOfWeek(day.y, day.m, day.d);
+
+      WORK_SKILLS.forEach(ws => {
+        const req = getWsReq(ws, dow);
+        if (req === 0) return;
+
+        // Count current coverage
+        const working = staffList.filter(name => {
+          const c = shiftData[pk]?.[name]?.[dk] || '';
+          return c && c !== '休' && getWorkSkills(name).includes(ws);
+        });
+
+        let gap = req - working.length;
+        if (gap <= 0) return;
+
+        // Find staff with this work skill who are on 休 and have shift skills
+        const candidates = staffList.filter(name => {
+          const c      = shiftData[pk]?.[name]?.[dk] || '';
+          const sSkils = getShiftSkills(name);
+          return c === '休' && getWorkSkills(name).includes(ws) && sSkils.length > 0;
+        });
+
+        for (const cand of candidates) {
+          if (gap <= 0) break;
+          const sSkils = getShiftSkills(cand);
+          shiftData[pk][cand][dk] = sSkils[0];
+          gap--;
+        }
+      });
+    });
+  }
+
+  saveData();
+  renderTable();
+}
+
+function shuffle(arr) { return arr.slice().sort(() => Math.random() - 0.5); }
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/* =====================================================
+   REQUIREMENTS DIALOG
+===================================================== */
+document.getElementById('reqBtn').addEventListener('click', openReqDialog);
+document.getElementById('reqCancelBtn').addEventListener('click', () => closeModal('reqOverlay'));
+document.getElementById('reqSaveBtn').addEventListener('click', saveReqs);
+
+function openReqDialog() {
+  const DOW_LABELS = ['月','火','水','木','金','土','日'];
+  const DOW_ORDER  = [1,2,3,4,5,6,0]; // Mon→Sun display order
+
+  let html = '<thead><tr><th>作業スキル</th>';
+  DOW_LABELS.forEach(d => { html += `<th>${d}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  WORK_SKILLS.forEach(ws => {
+    const st = WS_STYLE[ws];
+    html += `<tr><td style="background:${st.bg};color:${st.fg};">${esc(ws)}</td>`;
+    DOW_ORDER.forEach(dow => {
+      const v = getWsReq(ws, dow);
+      html += `<td><input class="req-input" type="number" min="0" max="99" value="${v}" data-ws="${esc(ws)}" data-dow="${dow}"></td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody>';
+  document.getElementById('reqTable').innerHTML = html;
+  openModal('reqOverlay');
+}
+
+function saveReqs() {
+  document.querySelectorAll('.req-input').forEach(inp => {
+    const ws  = inp.dataset.ws;
+    const dow = parseInt(inp.dataset.dow, 10);
+    const v   = Math.max(0, parseInt(inp.value, 10) || 0);
+    if (!workSkillReqs[ws]) workSkillReqs[ws] = {};
+    workSkillReqs[ws][dow] = v;
+  });
+  saveData();
+  closeModal('reqOverlay');
+  renderTable();
+}
+
+/* =====================================================
+   STAFF DIALOG
+===================================================== */
+document.getElementById('manageStaffBtn').addEventListener('click', openStaffDialog);
+document.getElementById('closeStaffBtn').addEventListener('click', closeStaffDialog);
+document.getElementById('addStaffBtn').addEventListener('click', addStaff);
+document.getElementById('newStaffInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addStaff();
+});
+
+function openStaffDialog() {
+  renderStaffList();
+  openModal('staffOverlay');
+  setTimeout(() => document.getElementById('newStaffInput').focus(), 60);
+}
+function closeStaffDialog() {
+  closeModal('staffOverlay');
+  renderTable();
+}
+
+function renderStaffList() {
+  const el = document.getElementById('staffListEl');
+  if (staffList.length === 0) {
+    el.innerHTML = '<div style="padding:14px;text-align:center;color:#aaa;">スタッフが登録されていません</div>';
+    return;
+  }
+
+  el.innerHTML = staffList.map((name, i) => {
+    const shiftSkls  = getShiftSkills(name);
+    const wsSkls     = getWorkSkills(name);
+    const workSat    = getWorkSat(name);
+    const regOff     = getRegularDaysOff(name);   // DOW array
+    const reqOff     = getRequestedDaysOff(name); // date strings
+    const staffType  = getStaffType(name);
+
+    const shiftChips = SKILL_SHIFTS.map(s =>
+      `<span class="skill-chip${shiftSkls.includes(s.code) ? ' active' : ''}"
+             style="background:${s.bg};color:${s.fg};"
+             data-type="shift" data-si="${i}" data-code="${esc(s.code)}">${esc(s.code)}</span>`
+    ).join('');
+
+    const wsChips = WORK_SKILLS.map(ws => {
+      const st = WS_STYLE[ws];
+      return `<span class="skill-chip${wsSkls.includes(ws) ? ' active' : ''}"
+               style="background:${st.bg};color:${st.fg};"
+               data-type="ws" data-si="${i}" data-code="${esc(ws)}">${esc(ws)}</span>`;
+    }).join('');
+
+    // 定休日: 月火水木金土日チップ (DOW 1,2,3,4,5,6,0)
+    const DOW_ORDER = [1,2,3,4,5,6,0];
+    const DOW_NAMES = ['月','火','水','木','金','土','日'];
+    const dowChips = DOW_ORDER.map((dow, di) => {
+      const label   = DOW_NAMES[di];
+      const isSat   = dow === 6;
+      const isSun   = dow === 0;
+      const satCls  = isSat ? ' sat' : isSun ? ' sun' : '';
+      const active  = regOff.includes(dow) ? ' active' : '';
+      return `<span class="dow-chip${satCls}${active}" data-type="regoff" data-si="${i}" data-dow="${dow}">${label}</span>`;
+    }).join('');
+
+    // 希望休タグ一覧
+    const reqTags = reqOff.slice().sort().map(dk => {
+      const [y2,m2,d2] = dk.split('-').map(Number);
+      const label = `${m2}/${d2}`;
+      return `<span class="req-off-tag">
+        ${label}
+        <button class="req-off-remove" data-action="removeReqOff" data-si="${i}" data-dk="${esc(dk)}" title="削除">×</button>
+      </span>`;
+    }).join('');
+
+    return `<div class="staff-item" data-idx="${i}">
+      <div class="staff-item-header">
+        <span class="si-index">${i+1}</span>
+        <span class="si-name">${esc(name)}</span>
+        <select class="staff-type-sel" data-type="stafftype" data-si="${i}">
+          <option value="パート"${staffType === 'パート' ? ' selected' : ''}>パート</option>
+          <option value="社員"${staffType === '社員' ? ' selected' : ''}>社員(月給)</option>
+        </select>
+        <button class="si-skill-toggle" data-si="${i}">設定</button>
+        <button class="si-btn" data-action="up"   data-idx="${i}" ${i===0 ? 'disabled' : ''}>▲</button>
+        <button class="si-btn" data-action="down" data-idx="${i}" ${i===staffList.length-1 ? 'disabled' : ''}>▼</button>
+        <button class="si-btn si-del" data-action="del" data-idx="${i}">✕</button>
+      </div>
+      <div class="skill-panel" id="skill-panel-${i}">
+        <div class="skill-section-title">勤務シフトスキル（対応可能なシフト）</div>
+        <div class="skill-chips">${shiftChips}</div>
+        <div class="skill-sat-row">
+          <input type="checkbox" id="sat-${i}" data-type="sat" data-si="${i}" ${workSat ? 'checked' : ''}>
+          <label for="sat-${i}">土曜日も出勤する</label>
+        </div>
+        <div class="skill-section-title">作業スキル（担当できる作業）</div>
+        <div class="skill-chips">${wsChips}</div>
+        <div class="skill-section-title">定休日（毎週休む曜日）</div>
+        <div class="skill-chips">${dowChips}</div>
+        <div class="skill-section-title">希望休（特定の日付）</div>
+        <div class="req-off-section">
+          <div class="req-off-add-row">
+            <input type="date" class="req-off-date-input" id="req-date-${i}" data-si="${i}">
+            <button class="req-off-add-btn" data-action="addReqOff" data-si="${i}">追加</button>
+          </div>
+          <div class="req-off-list" id="req-list-${i}">${reqTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
+        </div>
+        ${staffType !== '社員' ? `
+        <div class="skill-section-title">時給</div>
+        <div class="skill-wage-row">
+          <input type="number" class="wage-input" id="wage-${i}" data-type="wage" data-si="${i}"
+            value="${staffSkills[name]?.hourlyWage || ''}" min="0" max="9999" step="1" placeholder="0">
+          <span>円</span>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('staffListEl').addEventListener('click', e => {
+  // ---- Action buttons (up / down / del / addReqOff / removeReqOff) ----
+  const actionBtn = e.target.closest('[data-action]');
+  if (actionBtn) {
+    const action = actionBtn.dataset.action;
+
+    if (action === 'up' || action === 'down' || action === 'del') {
+      const idx = parseInt(actionBtn.dataset.idx, 10);
+      if (action === 'up')   moveStaff(idx, -1);
+      if (action === 'down') moveStaff(idx,  1);
+      if (action === 'del')  deleteStaff(idx);
+      return;
+    }
+
+    if (action === 'addReqOff') {
+      const si   = parseInt(actionBtn.dataset.si, 10);
+      const name = staffList[si];
+      const inp  = document.getElementById(`req-date-${si}`);
+      const dk   = inp?.value; // 'YYYY-MM-DD'
+      if (!dk) return;
+      ensureSkillObj(name);
+      if (!staffSkills[name].requestedDaysOff) staffSkills[name].requestedDaysOff = [];
+      if (!staffSkills[name].requestedDaysOff.includes(dk)) {
+        staffSkills[name].requestedDaysOff.push(dk);
+        staffSkills[name].requestedDaysOff.sort();
+        saveData();
+        refreshReqOffList(si, name);
+        renderTable();
+      }
+      inp.value = '';
+      return;
+    }
+
+    if (action === 'removeReqOff') {
+      const si   = parseInt(actionBtn.dataset.si, 10);
+      const name = staffList[si];
+      const dk   = actionBtn.dataset.dk;
+      ensureSkillObj(name);
+      if (!staffSkills[name].requestedDaysOff) staffSkills[name].requestedDaysOff = [];
+      const idx = staffSkills[name].requestedDaysOff.indexOf(dk);
+      if (idx >= 0) {
+        staffSkills[name].requestedDaysOff.splice(idx, 1);
+        saveData();
+        refreshReqOffList(si, name);
+        renderTable();
+      }
+      return;
+    }
+
+    return;
+  }
+
+  // ---- Skill panel toggle ----
+  const toggle = e.target.closest('.si-skill-toggle');
+  if (toggle) {
+    const panel = document.getElementById(`skill-panel-${toggle.dataset.si}`);
+    if (panel) panel.classList.toggle('open');
+    return;
+  }
+
+  // ---- Shift / WS skill chip ----
+  const chip = e.target.closest('.skill-chip');
+  if (chip) {
+    const si   = parseInt(chip.dataset.si, 10);
+    const name = staffList[si];
+    const type = chip.dataset.type;
+    const code = chip.dataset.code;
+    ensureSkillObj(name);
+
+    if (type === 'shift') {
+      const arr = staffSkills[name].shifts;
+      const idx = arr.indexOf(code);
+      if (idx >= 0) arr.splice(idx, 1); else arr.push(code);
+      chip.classList.toggle('active', staffSkills[name].shifts.includes(code));
+    } else if (type === 'ws') {
+      if (!staffSkills[name].workSkills) staffSkills[name].workSkills = [];
+      const arr = staffSkills[name].workSkills;
+      const idx = arr.indexOf(code);
+      if (idx >= 0) arr.splice(idx, 1); else arr.push(code);
+      chip.classList.toggle('active', staffSkills[name].workSkills.includes(code));
+    }
+    saveData();
+    return;
+  }
+
+  // ---- 定休日 DOW chip ----
+  const dowChip = e.target.closest('.dow-chip');
+  if (dowChip) {
+    const si   = parseInt(dowChip.dataset.si, 10);
+    const name = staffList[si];
+    const dow  = parseInt(dowChip.dataset.dow, 10);
+    ensureSkillObj(name);
+    if (!staffSkills[name].regularDaysOff) staffSkills[name].regularDaysOff = [];
+    const arr = staffSkills[name].regularDaysOff;
+    const idx = arr.indexOf(dow);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(dow);
+    dowChip.classList.toggle('active', staffSkills[name].regularDaysOff.includes(dow));
+    saveData();
+    renderTable();
+  }
+});
+
+function ensureSkillObj(name) {
+  if (!staffSkills[name]) {
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0 };
+  }
+}
+
+/** 希望休タグリストだけを再描画（スタッフ一覧全体を再描画せず） */
+function refreshReqOffList(si, name) {
+  const el = document.getElementById(`req-list-${si}`);
+  if (!el) return;
+  const reqOff = getRequestedDaysOff(name).slice().sort();
+  if (reqOff.length === 0) {
+    el.innerHTML = '<span style="font-size:11px;color:#aaa;">未設定</span>';
+    return;
+  }
+  el.innerHTML = reqOff.map(dk => {
+    const [,m2,d2] = dk.split('-').map(Number);
+    return `<span class="req-off-tag">
+      ${m2}/${d2}
+      <button class="req-off-remove" data-action="removeReqOff" data-si="${si}" data-dk="${esc(dk)}" title="削除">×</button>
+    </span>`;
+  }).join('');
+}
+
+document.getElementById('staffListEl').addEventListener('change', e => {
+  if (e.target.dataset.type === 'sat') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    if (!staffSkills[name]) staffSkills[name] = { shifts: [], workSat: false, workSkills: [] };
+    staffSkills[name].workSat = e.target.checked;
+    saveData();
+  }
+  if (e.target.dataset.type === 'stafftype') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].type = e.target.value;
+    saveData();
+    renderTable();
+    renderStaffList();
+  }
+  if (e.target.dataset.type === 'wage') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].hourlyWage = parseInt(e.target.value, 10) || 0;
+    saveData();
+  }
+});
+
+function addStaff() {
+  const input    = document.getElementById('newStaffInput');
+  const typeEl   = document.getElementById('newStaffType');
+  const name     = input.value.trim();
+  const staffType = typeEl ? typeEl.value : 'パート';
+  if (!name) { input.focus(); return; }
+  if (staffList.includes(name)) { alert(`「${name}」は既に登録されています`); input.select(); return; }
+  staffList.push(name);
+  ensureSkillObj(name);
+  staffSkills[name].type = staffType;
+  saveData();
+  input.value = '';
+  input.focus();
+  renderStaffList();
+}
+
+function deleteStaff(idx) {
+  const name = staffList[idx];
+  if (!confirm(`「${name}」を削除しますか？\nシフト・スキルデータも削除されます。`)) return;
+  staffList.splice(idx, 1);
+  delete staffSkills[name];
+  Object.keys(shiftData).forEach(pk => { delete shiftData[pk][name]; });
+  saveData();
+  renderStaffList();
+}
+
+function moveStaff(idx, dir) {
+  const ni = idx + dir;
+  if (ni < 0 || ni >= staffList.length) return;
+  [staffList[idx], staffList[ni]] = [staffList[ni], staffList[idx]];
+  saveData();
+  renderStaffList();
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+function updateStickyOffsets() {
+  const hh = document.getElementById('app-header').offsetHeight;
+  const lh = document.getElementById('legend').offsetHeight;
+  document.documentElement.style.setProperty('--header-h', hh + 'px');
+  document.documentElement.style.setProperty('--legend-h', lh + 'px');
+}
+
+(function init() {
+  loadData();
+  goToday();
+  renderLegend();
+  updateStickyOffsets();
+  new ResizeObserver(updateStickyOffsets).observe(document.getElementById('app-header'));
+  new ResizeObserver(updateStickyOffsets).observe(document.getElementById('legend'));
+  if (_supabase) {
+    document.getElementById('syncBtn').style.display = 'inline-flex';
+    document.getElementById('syncBtn').addEventListener('click', () => loadDataFromSupabase());
+    // 起動時にSupabaseから最新データを自動取得（他のPCと同期）
+    loadDataFromSupabase();
+  }
+})();
+</script>
+
+}
+</script>
+
+</body>
+</html>
