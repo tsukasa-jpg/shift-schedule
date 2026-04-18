@@ -375,13 +375,16 @@
     .auto-note { font-size: 11px; color: #888; line-height: 1.6; }
 
     /* ===== PRINT ===== */
+    /* 画面では誕生日絵文字のみ表示 */
+    .tan-print { display: none; }
+
     @page { size: A4 landscape; margin: 6mm; }
     @media print {
       #app-header { display: none !important; }
 
       /* 凡例：1行横並び・時刻あり・作業セクション非表示 */
       #legend {
-        font-size: 6.5px;
+        font-size: 7.5px;
         padding: 2px 0 3px;
         gap: 4px;
         flex-wrap: nowrap;
@@ -390,10 +393,10 @@
         background: #fff;
         overflow: visible;
       }
-      .leg-chip  { font-size: 6.5px; gap: 2px; }
-      .leg-badge { font-size: 6.5px; padding: 0 3px; border-radius: 2px; }
-      .leg-time  { color: #555; font-size: 6px; }
-      .leg-label { font-size: 6.5px; }
+      .leg-chip  { font-size: 7.5px; gap: 2px; }
+      .leg-badge { font-size: 7.5px; padding: 0 3px; border-radius: 2px; }
+      .leg-time  { color: #555; font-size: 7px; }
+      .leg-label { font-size: 7.5px; }
       .leg-divider { height: 10px; }
       .leg-hint  { display: none; }
       .leg-ws-section { display: none; }
@@ -401,7 +404,7 @@
       /* 配送プレフィックスを非表示 */
       .haiso-pfx { display: none; }
 
-      body { background: #fff; font-size: 7px; }
+      body { background: #fff; font-size: 8px; }
       #table-container { padding: 0; overflow: visible; height: auto; }
 
       /* テーブルをA4横幅に収める */
@@ -413,13 +416,13 @@
       }
       #shiftTable th, #shiftTable td {
         padding: 1px 1px;
-        height: 14px;
-        font-size: 7px;
+        height: 16px;
+        font-size: 8px;
         overflow: hidden;
         white-space: nowrap;
       }
       /* 氏名列は固定幅・見やすく、日付列は残り幅を均等分配 */
-      .col-name  { width: 20mm; min-width: unset; max-width: unset; font-size: 8.5px; font-weight: bold; }
+      .col-name  { width: 20mm; min-width: unset; max-width: unset; font-size: 9px; font-weight: bold; }
       .dh-num, .dh-dow, .dh-month, .shift-cell { width: auto; min-width: unset; }
       /* 休セルは白背景・文字なし */
       .shift-rest { background: #fff !important; color: #fff !important; }
@@ -436,21 +439,42 @@
         margin: 4px 0 0;
         border: 1px solid #999;
         padding: 3px 5px;
-        font-size: 7px;
+        font-size: 8px;
         page-break-inside: avoid;
         display: flex;
         align-items: flex-start;
         gap: 6px;
       }
-      #biko-section .biko-label { font-weight: bold; font-size: 7px; white-space: nowrap; }
+      #biko-section .biko-label { font-weight: bold; font-size: 8px; white-space: nowrap; }
       #biko-section textarea { display: none; }
       #biko-section .biko-print-text {
         display: block;
         white-space: pre-wrap;
         min-height: 30px;
-        font-size: 7px;
+        font-size: 8px;
         flex: 1;
       }
+
+      /* 誕生日マーク：印刷では絵文字を非表示にして「誕」テキストを表示 */
+      .tan-screen { display: none !important; }
+      .tan-print  { display: inline !important; font-weight: bold; }
+
+      /* ===== A3印刷時（掲示板用・大きめフォント） ===== */
+      body[data-print-size="A3"] { font-size: 11px; }
+      body[data-print-size="A3"] #legend { font-size: 10px; }
+      body[data-print-size="A3"] .leg-chip,
+      body[data-print-size="A3"] .leg-badge,
+      body[data-print-size="A3"] .leg-label { font-size: 10px; }
+      body[data-print-size="A3"] .leg-time  { font-size: 9px; }
+      body[data-print-size="A3"] #shiftTable th,
+      body[data-print-size="A3"] #shiftTable td { font-size: 11px; height: 19px; }
+      body[data-print-size="A3"] .col-name { font-size: 12px; }
+      body[data-print-size="A3"] #biko-section,
+      body[data-print-size="A3"] #biko-section .biko-label,
+      body[data-print-size="A3"] #biko-section .biko-print-text { font-size: 10px; }
+      /* 備考欄を必ず表と同じページに収める */
+      body[data-print-size="A3"] #shiftTable { page-break-after: avoid; }
+      body[data-print-size="A3"] #biko-section { page-break-before: avoid; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -470,7 +494,8 @@
     <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
     <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
     <button class="hbtn hbtn-ghost"  id="manageStaffBtn">スタッフ管理</button>
-    <button class="hbtn hbtn-ghost"  id="printBtn">印刷</button>
+    <button class="hbtn hbtn-ghost"  id="printA4Btn">A4印刷</button>
+    <button class="hbtn hbtn-ghost"  id="printA3Btn">A3印刷</button>
     <button class="hbtn hbtn-ghost" id="syncBtn" title="Supabaseから最新データを読み込む" style="display:none;">↻ 同期</button>
     <span id="syncStatus" style="font-size:10px; white-space:nowrap;"></span>
   </div>
@@ -840,7 +865,7 @@ function renderLegend() {
   const el = document.getElementById('legend');
   // 画面・印刷ともに早①～誕（インデックス 0-9）のみ表示
   const shiftChips = SHIFTS.slice(0, 10).map(s => {
-    const disp = s.code === '誕' ? '🎂' : esc(s.code);
+    const disp = s.code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : esc(s.code);
     const timeStr = s.time !== '-' ? `<span class="leg-time"> ${esc(s.time)}</span>` : '';
     return `<span class="leg-chip">
       <span class="leg-badge" style="background:${s.bg};color:${s.fg};">${disp}</span>
@@ -1023,7 +1048,7 @@ function renderTable() {
       const tipAttr = tipParts.length ? ` title="${tipParts.join(' / ')}"` : '';
 
       const restCls = code === '休' ? ' shift-rest' : '';
-      const cellContent = code === '休' ? '' : code === '誕' ? '🎂' : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
+      const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
       html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${bnd}"` +
               ` data-si="${idx}" data-di="${i}"` +
               ` style="${cellStyle}"${tipAttr}>${cellContent}</td>`;
@@ -1217,7 +1242,16 @@ document.addEventListener('click', e => {
 document.getElementById('prevMonthBtn').addEventListener('click', () => changeMonth(-1));
 document.getElementById('nextMonthBtn').addEventListener('click', () => changeMonth(1));
 document.getElementById('todayBtn').addEventListener('click', goToday);
-document.getElementById('printBtn').addEventListener('click', () => window.print());
+function printWithPageSize(size) {
+  let st = document.getElementById('print-page-size-override');
+  if (!st) { st = document.createElement('style'); st.id = 'print-page-size-override'; document.head.appendChild(st); }
+  st.textContent = `@page { size: ${size} landscape; margin: 6mm; }`;
+  document.body.dataset.printSize = size;
+  window.print();
+  delete document.body.dataset.printSize;
+}
+document.getElementById('printA4Btn').addEventListener('click', () => printWithPageSize('A4'));
+document.getElementById('printA3Btn').addEventListener('click', () => printWithPageSize('A3'));
 document.getElementById('bikoText').addEventListener('input', () => {
   const pk = periodKey();
   bikoNotes[pk] = document.getElementById('bikoText').value;
