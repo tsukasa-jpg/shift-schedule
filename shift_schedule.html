@@ -374,6 +374,42 @@
     .auto-option input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
     .auto-note { font-size: 11px; color: #888; line-height: 1.6; }
 
+    /* ===== PAID LEAVE DIALOG ===== */
+    #paidLeaveDialog { width: 700px; max-width: 96vw; }
+    .pl-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
+    .pl-year-sel {
+      padding: 5px 8px; border: 1px solid #c0c8d4; border-radius: 5px;
+      font-size: 13px; font-family: inherit; outline: none; background: #fff; cursor: pointer;
+    }
+    .pl-note { font-size: 11px; color: #888; }
+    .pl-table-wrap { overflow: auto; flex: 1; max-height: 420px; }
+    .pl-table { border-collapse: collapse; width: 100%; min-width: 560px; }
+    .pl-table th, .pl-table td {
+      border: 1px solid #dde1e7; padding: 6px 9px; text-align: center; font-size: 12px; white-space: nowrap;
+    }
+    .pl-table th { background: #2c4f78; color: #fff; font-weight: bold; position: sticky; top: 0; z-index: 2; }
+    .pl-table td:first-child { text-align: left; font-weight: bold; background: #f4f6fa; }
+    .pl-input {
+      width: 56px; padding: 4px 6px; border: 1px solid #c0c8d4;
+      border-radius: 4px; text-align: center; font-size: 12px;
+      font-family: inherit; outline: none;
+    }
+    .pl-input:focus { border-color: #4a90d9; }
+    .pl-used   { color: #6b21a8; font-weight: bold; }
+    .pl-remain { font-weight: bold; }
+    .pl-remain.over { color: #c00; }
+    .pl-remain.ok   { color: #276749; }
+    .pl-holiday-count { color: #555; }
+    .pl-tfoot td { background: #3d5472; color: #fff; font-weight: bold; text-align: center; }
+    .pl-tfoot td:first-child { text-align: left; }
+    .pl-summary { display: flex; gap: 16px; flex-shrink: 0; flex-wrap: wrap; }
+    .pl-summary-card {
+      background: #f4f6fa; border: 1px solid #dde1e7; border-radius: 6px;
+      padding: 8px 14px; font-size: 12px; min-width: 130px;
+    }
+    .pl-summary-card .pl-sc-label { color: #555; font-size: 11px; margin-bottom: 2px; }
+    .pl-summary-card .pl-sc-val { font-size: 18px; font-weight: bold; color: #1e3a5f; }
+
     /* ===== PRINT ===== */
     /* 画面では誕生日絵文字のみ表示 */
     .tan-print { display: none; }
@@ -494,6 +530,7 @@
     <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
     <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
     <button class="hbtn hbtn-ghost"  id="manageStaffBtn">スタッフ管理</button>
+    <button class="hbtn hbtn-ghost"  id="paidLeaveBtn">有給管理</button>
     <button class="hbtn hbtn-ghost"  id="printA4Btn">A4印刷</button>
     <button class="hbtn hbtn-ghost"  id="printA3Btn">A3印刷</button>
     <button class="hbtn hbtn-ghost" id="syncBtn" title="Supabaseから最新データを読み込む" style="display:none;">↻ 同期</button>
@@ -590,6 +627,26 @@
   </div>
 </div>
 
+<!-- ===== PAID LEAVE DIALOG ===== -->
+<div id="paidLeaveOverlay" class="modal-overlay">
+  <div id="paidLeaveDialog" class="modal-box">
+    <h2>有給管理・年間休日集計</h2>
+    <div class="pl-controls">
+      <label style="font-size:13px;font-weight:bold;">年度:</label>
+      <select id="plYearSel" class="pl-year-sel"></select>
+      <span class="pl-note">※ 年度 = 4月〜翌3月</span>
+    </div>
+    <div class="pl-summary" id="plSummary"></div>
+    <div class="pl-table-wrap">
+      <table class="pl-table" id="plTable"></table>
+    </div>
+    <div class="modal-footer">
+      <button class="dbtn dbtn-blue"  id="plSaveBtn">保存</button>
+      <button class="dbtn dbtn-gray"  id="closePaidLeaveBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -616,6 +673,7 @@ const SHIFTS = [
   { code: '通し', label: '通し',   time: '9:00～20:00',  h: 11,  bg: '#e6b4f6', fg: '#5c1888' },
   { code: '在',   label: '在宅',   time: '9:00～18:00',  h: 9,   bg: '#c8f0e8', fg: '#1a5c48' },
   { code: '誕',   label: '誕生日休暇', time: '-',        h: 0,   bg: '#fce4ec', fg: '#c2185b' },
+  { code: '有給', label: '有給休暇',   time: '-',        h: 0,   bg: '#e8d5f5', fg: '#6b21a8' },
   { code: '配送①', label: '配送①', time: '3:00～12:00', h: 9,   bg: '#b3d9ff', fg: '#003580' },
   { code: '配送②', label: '配送②', time: '3:00～12:00', h: 9,   bg: '#90c8ff', fg: '#002570' },
   { code: '配送③', label: '配送③', time: '3:00～12:00', h: 9,   bg: '#c8e8ff', fg: '#004090' },
@@ -664,6 +722,25 @@ const HOLIDAYS = {
   '2026-11-03':'文化の日','2026-11-23':'勤労感謝の日',
 };
 
+// 会社年間休日カレンダー（2026年4月〜2027年3月）
+const COMPANY_HOLIDAYS = new Set([
+  "2026-04-04","2026-04-05","2026-04-11","2026-04-12","2026-04-18","2026-04-19","2026-04-25","2026-04-26",
+  "2026-05-02","2026-05-03","2026-05-04","2026-05-05","2026-05-06","2026-05-09","2026-05-10","2026-05-16",
+  "2026-05-17","2026-05-23","2026-05-24","2026-05-30","2026-05-31","2026-06-06","2026-06-07","2026-06-13",
+  "2026-06-14","2026-06-20","2026-06-21","2026-06-27","2026-06-28","2026-07-04","2026-07-05","2026-07-11",
+  "2026-07-12","2026-07-18","2026-07-19","2026-07-25","2026-07-26","2026-08-01","2026-08-02","2026-08-07",
+  "2026-08-08","2026-08-09","2026-08-13","2026-08-14","2026-08-15","2026-08-16","2026-08-22","2026-08-23",
+  "2026-08-29","2026-08-30","2026-09-05","2026-09-06","2026-09-12","2026-09-13","2026-09-19","2026-09-20",
+  "2026-09-26","2026-09-27","2026-10-03","2026-10-04","2026-10-10","2026-10-11","2026-10-17","2026-10-18",
+  "2026-10-24","2026-10-25","2026-10-31","2026-11-01","2026-11-07","2026-11-08","2026-11-14","2026-11-15",
+  "2026-11-21","2026-11-22","2026-11-28","2026-11-29","2026-12-05","2026-12-06","2026-12-12","2026-12-13",
+  "2026-12-19","2026-12-20","2026-12-26","2026-12-27","2026-12-28","2026-12-29","2026-12-30","2026-12-31",
+  "2027-01-01","2027-01-02","2027-01-03","2027-01-09","2027-01-10","2027-01-16","2027-01-17","2027-01-23",
+  "2027-01-24","2027-01-30","2027-01-31","2027-02-06","2027-02-07","2027-02-13","2027-02-14","2027-02-20",
+  "2027-02-21","2027-02-27","2027-02-28","2027-03-06","2027-03-07","2027-03-13","2027-03-14","2027-03-20",
+  "2027-03-21","2027-03-27","2027-03-28",
+]);
+
 /* =====================================================
    STATE  (期間: currentYear/currentMonth の 16日 〜 翌月15日)
 ===================================================== */
@@ -674,6 +751,7 @@ let shiftData    = {};  // { periodKey: { name: { 'YYYY-MM-DD': code } } }
 let staffSkills  = {};  // { name: { shifts: string[], workSat: bool, workSkills: string[] } }
 let workSkillReqs = {}; // { wsName: { dow(0-6): count } }
 let bikoNotes     = {}; // { periodKey: string }
+let paidLeaveData = {}; // { name: { "YYYY": { granted: N } } }  YYYY = 年度開始年
 
 let popupTarget = null;
 
@@ -683,11 +761,12 @@ let popupTarget = null;
 function loadData() {
   try {
     const d = JSON.parse(localStorage.getItem('shiftAppV4') || '{}');
-    staffList     = Array.isArray(d.staffList)                           ? d.staffList     : defaultStaff();
-    shiftData     = typeof d.shiftData    === 'object' && d.shiftData    ? d.shiftData     : {};
-    staffSkills   = typeof d.staffSkills  === 'object' && d.staffSkills  ? d.staffSkills   : {};
-    workSkillReqs = typeof d.workSkillReqs=== 'object' && d.workSkillReqs? d.workSkillReqs : defaultReqs();
-    bikoNotes     = typeof d.bikoNotes    === 'object' && d.bikoNotes    ? d.bikoNotes     : {};
+    staffList     = Array.isArray(d.staffList)                               ? d.staffList     : defaultStaff();
+    shiftData     = typeof d.shiftData      === 'object' && d.shiftData     ? d.shiftData     : {};
+    staffSkills   = typeof d.staffSkills    === 'object' && d.staffSkills   ? d.staffSkills   : {};
+    workSkillReqs = typeof d.workSkillReqs  === 'object' && d.workSkillReqs ? d.workSkillReqs : defaultReqs();
+    bikoNotes     = typeof d.bikoNotes      === 'object' && d.bikoNotes     ? d.bikoNotes     : {};
+    paidLeaveData = typeof d.paidLeaveData  === 'object' && d.paidLeaveData ? d.paidLeaveData : {};
     // 旧「配送」コードを「配送①」へ移行
     Object.values(shiftData).forEach(pd => {
       Object.values(pd).forEach(nd => {
@@ -704,7 +783,12 @@ function loadData() {
   }
 }
 function _saveLocal() {
-  localStorage.setItem('shiftAppV4', JSON.stringify({ staffList, shiftData, staffSkills, workSkillReqs, bikoNotes }));
+  const updatedAt = new Date().toISOString();
+  localStorage.setItem('shiftAppV4', JSON.stringify({ staffList, shiftData, staffSkills, workSkillReqs, bikoNotes, paidLeaveData, updatedAt }));
+}
+function _localUpdatedAt() {
+  try { return new Date(JSON.parse(localStorage.getItem('shiftAppV4') || '{}').updatedAt || 0).getTime(); }
+  catch { return 0; }
 }
 function saveData() {
   _saveLocal();
@@ -733,7 +817,7 @@ async function saveDataToSupabase() {
   try {
     const { error } = await _supabase
       .from('shift_app_data')
-      .upsert({ id: 'main', data: { staffList, shiftData, staffSkills, workSkillReqs, bikoNotes }, updated_at: new Date().toISOString() });
+      .upsert({ id: 'main', data: { staffList, shiftData, staffSkills, workSkillReqs, bikoNotes, paidLeaveData }, updated_at: new Date().toISOString() });
     if (error) throw error;
     setSyncStatus('ok');
   } catch (e) {
@@ -752,13 +836,27 @@ async function loadDataFromSupabase() {
       .eq('id', 'main')
       .single();
     if (error) throw error;
-    if (!row?.data) return false;
+
+    const remoteTime = row?.updated_at ? new Date(row.updated_at).getTime() : 0;
+    const localTime  = _localUpdatedAt();
+
+    // ローカルの方が新しい（または同じ）→ Supabaseへ押し出す
+    if (!row?.data || localTime >= remoteTime) {
+      console.log('[Supabase] ローカルが新しいためSupabaseへ保存 local=', new Date(localTime).toISOString(), 'remote=', row?.updated_at);
+      await saveDataToSupabase();
+      setSyncStatus('ok');
+      return false;
+    }
+
+    // Supabaseの方が新しい → ローカルを上書き
+    console.log('[Supabase] Supabaseが新しいため取得 remote=', row.updated_at, 'local=', new Date(localTime).toISOString());
     const d = row.data;
     if (Array.isArray(d.staffList))                                        staffList     = d.staffList;
     if (typeof d.shiftData     === 'object' && d.shiftData)                shiftData     = d.shiftData;
     if (typeof d.staffSkills   === 'object' && d.staffSkills)              staffSkills   = d.staffSkills;
     if (typeof d.workSkillReqs === 'object' && d.workSkillReqs)            workSkillReqs = d.workSkillReqs;
     if (typeof d.bikoNotes     === 'object' && d.bikoNotes)                bikoNotes     = d.bikoNotes;
+    if (typeof d.paidLeaveData === 'object' && d.paidLeaveData)            paidLeaveData = d.paidLeaveData;
     // 旧データ移行を再適用
     Object.values(shiftData).forEach(pd =>
       Object.values(pd).forEach(nd =>
@@ -766,7 +864,7 @@ async function loadDataFromSupabase() {
     Object.values(staffSkills).forEach(sk => {
       if (sk.shifts) sk.shifts = sk.shifts.map(c => c === '配送' ? '配送①' : c);
     });
-    _saveLocal(); // localStorageにも反映（saveDataToSupabaseの二重呼び出しを避ける）
+    _saveLocal();
     renderTable();
     setSyncStatus('ok');
     return true;
@@ -793,6 +891,7 @@ function periodKey() { return `${currentYear}-${pad2(currentMonth)}-16`; }
 function dateStr(y, m, d) { return `${y}-${pad2(m)}-${pad2(d)}`; }
 function dayOfWeek(y, m, d) { return new Date(y, m-1, d).getDay(); }
 function isHoliday(y, m, d) { return dateStr(y,m,d) in HOLIDAYS; }
+function isCompanyHoliday(y, m, d) { return COMPANY_HOLIDAYS.has(dateStr(y,m,d)); }
 
 function dayClass(y, m, d) {
   const dow = dayOfWeek(y, m, d);
@@ -863,8 +962,8 @@ function getPeriodLabel() {
 ===================================================== */
 function renderLegend() {
   const el = document.getElementById('legend');
-  // 画面・印刷ともに早①～誕（インデックス 0-9）のみ表示
-  const shiftChips = SHIFTS.slice(0, 10).map(s => {
+  // 画面・印刷ともに早①～有給（インデックス 0-10）のみ表示
+  const shiftChips = SHIFTS.slice(0, 11).map(s => {
     const disp = s.code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : esc(s.code);
     const timeStr = s.time !== '-' ? `<span class="leg-time"> ${esc(s.time)}</span>` : '';
     return `<span class="leg-chip">
@@ -1027,7 +1126,7 @@ function renderTable() {
       const dc    = dayClass(day.y, day.m, day.d);
       const bnd   = i > 0 && day.d === 1 ? ' month-boundary' : '';
 
-      const mismatch = code && code !== '休' && shiftSkls.length > 0 && !shiftSkls.includes(code);
+      const mismatch = code && code !== '休' && code !== '有給' && shiftSkls.length > 0 && !shiftSkls.includes(code);
       const warnCls  = mismatch ? ' skill-warn' : '';
       const cellStyle = shift ? `background:${shift.bg};color:${shift.fg};` : '';
       const cellDcCls = shift ? '' : dc;
@@ -1192,7 +1291,7 @@ function openPopup(e, staff, dayObj, targetEl) {
   const grid = document.getElementById('popupGrid');
   grid.innerHTML =
     SHIFTS.map(s => {
-      const noSkill = s.code !== '休' && shiftSkls.length > 0 && !shiftSkls.includes(s.code);
+      const noSkill = s.code !== '休' && s.code !== '有給' && shiftSkls.length > 0 && !shiftSkls.includes(s.code);
       const btnLabel = s.code === '誕' ? '🎂' : esc(s.code);
       const btnTime  = s.time !== '-' ? `<small>${esc(s.time)}</small>` : '';
       return `<button class="popup-shift-btn${noSkill ? ' no-skill' : ''}"
@@ -1259,8 +1358,157 @@ document.getElementById('bikoText').addEventListener('input', () => {
   saveData();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closePopup(); closeModal('staffOverlay'); closeModal('reqOverlay'); closeModal('autoOverlay'); }
+  if (e.key === 'Escape') { closePopup(); closeModal('staffOverlay'); closeModal('reqOverlay'); closeModal('autoOverlay'); closeModal('paidLeaveOverlay'); }
 });
+
+/* =====================================================
+   PAID LEAVE MANAGEMENT
+===================================================== */
+/** 年度（4月〜翌3月）の全期間キーを返す。fy = 年度開始年 */
+function getFiscalPeriodKeys(fy) {
+  const keys = [];
+  for (let m = 4; m <= 12; m++) keys.push(`${fy}-${pad2(m)}-16`);
+  for (let m = 1; m <= 3;  m++) keys.push(`${fy + 1}-${pad2(m)}-16`);
+  return keys;
+}
+
+/** currentYear/Month から現在の年度を推定 */
+function currentFiscalYear() {
+  return currentMonth >= 4 ? currentYear : currentYear - 1;
+}
+
+/** 年度 fy のスタッフ有給付与日数 */
+function getPaidLeaveGranted(name, fy) {
+  return paidLeaveData[name]?.[String(fy)]?.granted ?? 0;
+}
+
+/** 年度 fy のスタッフ有給取得日数（shiftData から集計） */
+function getPaidLeaveUsed(name, fy) {
+  let count = 0;
+  getFiscalPeriodKeys(fy).forEach(pk => {
+    const nd = shiftData[pk]?.[name] || {};
+    Object.values(nd).forEach(code => { if (code === '有給') count++; });
+  });
+  return count;
+}
+
+/** 年度 fy のスタッフ年間出勤日数（有給・休・誕 以外） */
+function getAnnualWorkCount(name, fy) {
+  let count = 0;
+  getFiscalPeriodKeys(fy).forEach(pk => {
+    const nd = shiftData[pk]?.[name] || {};
+    Object.values(nd).forEach(code => {
+      if (code && code !== '休' && code !== '誕' && code !== '有給') count++;
+    });
+  });
+  return count;
+}
+
+/** 年度 fy のスタッフ年間休日数（休 + 誕 + 有給 の合計） */
+function getAnnualHolidayCount(name, fy) {
+  let count = 0;
+  getFiscalPeriodKeys(fy).forEach(pk => {
+    const nd = shiftData[pk]?.[name] || {};
+    Object.values(nd).forEach(code => {
+      if (code === '休' || code === '誕' || code === '有給') count++;
+    });
+  });
+  return count;
+}
+
+document.getElementById('paidLeaveBtn').addEventListener('click', openPaidLeaveDialog);
+document.getElementById('closePaidLeaveBtn').addEventListener('click', () => closeModal('paidLeaveOverlay'));
+document.getElementById('plSaveBtn').addEventListener('click', savePaidLeave);
+document.getElementById('paidLeaveOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('paidLeaveOverlay')) closeModal('paidLeaveOverlay');
+});
+document.getElementById('plYearSel').addEventListener('change', () => {
+  renderPlTable(parseInt(document.getElementById('plYearSel').value, 10));
+});
+
+function openPaidLeaveDialog() {
+  const sel = document.getElementById('plYearSel');
+  const fy  = currentFiscalYear();
+  // 年度選択肢: fy-2 〜 fy+1
+  sel.innerHTML = '';
+  for (let y = fy - 2; y <= fy + 1; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = `${y}年度（${y}/4〜${y+1}/3）`;
+    if (y === fy) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  renderPlTable(fy);
+  openModal('paidLeaveOverlay');
+}
+
+function renderPlTable(fy) {
+  /* --- サマリーカード --- */
+  const sumEl = document.getElementById('plSummary');
+  const totalGranted = staffList.reduce((s, n) => s + getPaidLeaveGranted(n, fy), 0);
+  const totalUsed    = staffList.reduce((s, n) => s + getPaidLeaveUsed(n, fy), 0);
+  sumEl.innerHTML =
+    `<div class="pl-summary-card"><div class="pl-sc-label">${fy}年度 有給付与合計</div><div class="pl-sc-val">${totalGranted}日</div></div>` +
+    `<div class="pl-summary-card"><div class="pl-sc-label">${fy}年度 有給取得合計</div><div class="pl-sc-val pl-used">${totalUsed}日</div></div>` +
+    `<div class="pl-summary-card"><div class="pl-sc-label">${fy}年度 有給残合計</div><div class="pl-sc-val">${totalGranted - totalUsed}日</div></div>`;
+
+  /* --- テーブル --- */
+  let html = `<thead><tr>
+    <th>氏名</th>
+    <th>付与日数<br><small style="font-weight:normal;">(編集可)</small></th>
+    <th>取得済日数</th>
+    <th>残日数</th>
+    <th>年間出勤日数</th>
+    <th>年間休日数<br><small style="font-weight:normal;">(休+誕+有給)</small></th>
+  </tr></thead><tbody>`;
+
+  staffList.forEach((name, i) => {
+    const granted  = getPaidLeaveGranted(name, fy);
+    const used     = getPaidLeaveUsed(name, fy);
+    const remain   = granted - used;
+    const workDays = getAnnualWorkCount(name, fy);
+    const holDays  = getAnnualHolidayCount(name, fy);
+    const remCls   = remain < 0 ? 'over' : 'ok';
+    const rowBg    = i % 2 === 0 ? '' : ' style="background:#fafbfd;"';
+    html += `<tr${rowBg}>
+      <td>${esc(name)}</td>
+      <td><input class="pl-input" type="number" min="0" max="99" step="1"
+          data-pl-name="${esc(name)}" data-pl-fy="${fy}" value="${granted}"> 日</td>
+      <td class="pl-used">${used} 日</td>
+      <td class="pl-remain ${remCls}">${remain} 日</td>
+      <td>${workDays > 0 ? workDays + ' 日' : '—'}</td>
+      <td class="pl-holiday-count">${holDays > 0 ? holDays + ' 日' : '—'}</td>
+    </tr>`;
+  });
+
+  /* 合計行 */
+  const gWork = staffList.reduce((s, n) => s + getAnnualWorkCount(n, fy), 0);
+  const gHol  = staffList.reduce((s, n) => s + getAnnualHolidayCount(n, fy), 0);
+  html += `</tbody><tfoot class="pl-tfoot"><tr>
+    <td>合計</td>
+    <td>${totalGranted} 日</td>
+    <td>${totalUsed} 日</td>
+    <td>${totalGranted - totalUsed} 日</td>
+    <td>${gWork > 0 ? gWork + ' 日' : '—'}</td>
+    <td>${gHol > 0 ? gHol + ' 日' : '—'}</td>
+  </tr></tfoot>`;
+
+  document.getElementById('plTable').innerHTML = html;
+}
+
+function savePaidLeave() {
+  document.querySelectorAll('.pl-input').forEach(inp => {
+    const name = inp.dataset.plName;
+    const fy   = inp.dataset.plFy;
+    const n    = Math.max(0, parseInt(inp.value, 10) || 0);
+    if (!paidLeaveData[name]) paidLeaveData[name] = {};
+    if (!paidLeaveData[name][fy]) paidLeaveData[name][fy] = {};
+    paidLeaveData[name][fy].granted = n;
+  });
+  saveData();
+  // サマリーカードを再描画
+  renderPlTable(parseInt(document.getElementById('plYearSel').value, 10));
+}
 
 function changeMonth(delta) {
   currentMonth += delta;
@@ -1331,6 +1579,8 @@ function runAutoCreate() {
       const sun = dow === 0;
       const hol = isHoliday(day.y, day.m, day.d);
 
+      // 社員：会社カレンダー休業日 → 常に休み
+      if (getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
       if (optSunRest && (sun || hol))         { shiftData[pk][name][dk] = '休'; return; }
       if (sat && optSatRest && !workSat)       { shiftData[pk][name][dk] = '休'; return; }
       // 定休日・希望休 → 休
@@ -1363,10 +1613,12 @@ function runAutoCreate() {
         if (gap <= 0) return;
 
         // Find staff with this work skill who are on 休 and have shift skills
+        // 社員の会社カレンダー休業日は上書きしない
         const candidates = staffList.filter(name => {
           const c      = shiftData[pk]?.[name]?.[dk] || '';
           const sSkils = getShiftSkills(name);
-          return c === '休' && getWorkSkills(name).includes(ws) && sSkils.length > 0;
+          return c === '休' && getWorkSkills(name).includes(ws) && sSkils.length > 0
+            && !(getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d));
         });
 
         for (const cand of candidates) {
@@ -1470,7 +1722,7 @@ function renderStaffList() {
     const reqOff     = getRequestedDaysOff(name); // date strings
     const staffType  = getStaffType(name);
 
-    const shiftChips = SKILL_SHIFTS.map(s =>
+    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給').map(s =>
       `<span class="skill-chip${shiftSkls.includes(s.code) ? ' active' : ''}"
              style="background:${s.bg};color:${s.fg};"
              data-type="shift" data-si="${i}" data-code="${esc(s.code)}">${esc(s.code)}</span>`
@@ -1722,6 +1974,7 @@ function deleteStaff(idx) {
   if (!confirm(`「${name}」を削除しますか？\nシフト・スキルデータも削除されます。`)) return;
   staffList.splice(idx, 1);
   delete staffSkills[name];
+  delete paidLeaveData[name];
   Object.keys(shiftData).forEach(pk => { delete shiftData[pk][name]; });
   saveData();
   renderStaffList();
@@ -1759,9 +2012,6 @@ function updateStickyOffsets() {
     loadDataFromSupabase();
   }
 })();
-</script>
-
-}
 </script>
 
 </body>
