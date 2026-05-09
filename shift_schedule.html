@@ -410,6 +410,42 @@
     .pl-summary-card .pl-sc-label { color: #555; font-size: 11px; margin-bottom: 2px; }
     .pl-summary-card .pl-sc-val { font-size: 18px; font-weight: bold; color: #1e3a5f; }
 
+    /* ===== HALF-PRINT OVERLAY ===== */
+    #half-print-area { display: none; }
+
+    .half-print-section + .half-print-section { page-break-before: always; }
+
+    .half-block-title {
+      font-family: 'Meiryo UI', 'Meiryo', sans-serif;
+      font-size: 11px; font-weight: bold; margin-bottom: 3px;
+    }
+    .half-tbl {
+      border-collapse: collapse; width: 100%;
+      font-size: 8.5px; font-family: 'Meiryo UI', 'Meiryo', sans-serif;
+    }
+    .half-tbl th, .half-tbl td {
+      border: 1px solid #bbb; padding: 1px 1px;
+      text-align: center; white-space: nowrap;
+      height: 15px; overflow: hidden;
+    }
+    .half-tbl .col-name {
+      text-align: left; padding-left: 4px; font-weight: bold; width: 18mm;
+    }
+    .half-tbl .hn { background: #2c4f78 !important; color: #fff !important; }
+    .half-tbl .hn.d-sat { background: #bed8f5 !important; color: #1a4a80 !important; }
+    .half-tbl .hn.d-sun, .half-tbl .hn.d-hol { background: #fad4d4 !important; color: #a01010 !important; }
+    .half-tbl .hn.col-name { background: #1e3a5f !important; color: #fff !important; }
+    .half-tbl td.d-sat { background-color: #e8f2fc; color: #1a4a80; }
+    .half-tbl td.d-sun, .half-tbl td.d-hol { background-color: #fef0f0; color: #801010; }
+
+    @media print {
+      body.printing-halves > *:not(#half-print-area) { display: none !important; }
+      body.printing-halves #half-print-area {
+        display: block !important;
+        font-family: 'Meiryo UI', 'Meiryo', sans-serif;
+      }
+    }
+
     /* ===== PRINT ===== */
     /* 画面では誕生日絵文字のみ表示 */
     .tan-print { display: none; }
@@ -495,6 +531,13 @@
       .tan-screen { display: none !important; }
       .tan-print  { display: inline !important; font-weight: bold; }
 
+      /* ===== A4縦・半月印刷時 ===== */
+      body[data-print-size="A4-half"] #shiftTable th,
+      body[data-print-size="A4-half"] #shiftTable td { font-size: 9px; height: 17px; }
+      body[data-print-size="A4-half"] .col-name { width: 18mm; font-size: 9px; }
+      body[data-print-size="A4-half"] #legend { font-size: 8px; }
+      body[data-print-size="A4-half"] #biko-section { font-size: 9px; }
+
       /* ===== A3印刷時（掲示板用・大きめフォント） ===== */
       body[data-print-size="A3"] { font-size: 11px; }
       body[data-print-size="A3"] #legend { font-size: 10px; }
@@ -533,6 +576,9 @@
     <button class="hbtn hbtn-ghost"  id="paidLeaveBtn">有給管理</button>
     <button class="hbtn hbtn-ghost"  id="printA4Btn">A4印刷</button>
     <button class="hbtn hbtn-ghost"  id="printA3Btn">A3印刷</button>
+    <button class="hbtn hbtn-ghost"  id="printFirstHalfBtn">前半(1-15日)</button>
+    <button class="hbtn hbtn-ghost"  id="printSecondHalfBtn">後半(16-末日)</button>
+    <button class="hbtn hbtn-ghost"  id="printBothHalvesBtn">両面印刷</button>
     <button class="hbtn hbtn-ghost" id="syncBtn" title="Supabaseから最新データを読み込む" style="display:none;">↻ 同期</button>
     <span id="syncStatus" style="font-size:10px; white-space:nowrap;"></span>
   </div>
@@ -545,6 +591,9 @@
 <div id="table-container">
   <table id="shiftTable"></table>
 </div>
+
+<!-- ===== 半月印刷用オーバーレイ（画面非表示・印刷時のみ表示） ===== -->
+<div id="half-print-area"></div>
 
 <!-- ===== BIKO SECTION ===== -->
 <div id="biko-section">
@@ -665,7 +714,7 @@ const _supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
 const SHIFTS = [
   { code: '早①', label: '早番①', time: '9:00～18:00',  h: 9,   bg: '#b8efb8', fg: '#185c18' },
   { code: '早②', label: '早番②', time: '9:00～16:00',  h: 7,   bg: '#d4efaa', fg: '#286010' },
-  { code: '早③', label: '早番③', time: '9:00～14:30',  h: 5.5, bg: '#f4ee9c', fg: '#585800' },
+  { code: '早③', label: '早番③', time: '9:00～15:30',  h: 6.5, bg: '#f4ee9c', fg: '#585800' },
   { code: '早④', label: '早番④', time: '9:00～17:00',  h: 8,   bg: '#e8f4b4', fg: '#3c5800' },
   { code: '中①', label: '中番①', time: '13:00～20:00', h: 7,   bg: '#a4d8f6', fg: '#0a3c6c' },
   { code: '中②', label: '中番②', time: '14:00～20:00', h: 6,   bg: '#b4c6f6', fg: '#1a2c8c' },
@@ -1059,12 +1108,12 @@ function renderTable() {
   let prevM = null, spanStart = 0;
   periodDays.forEach((day, i) => {
     if (day.m !== prevM) {
-      if (prevM !== null) spanData.push({ y: periodDays[spanStart].y, m: prevM, count: i - spanStart, boundary: spanStart > 0 });
+      if (prevM !== null) spanData.push({ y: periodDays[spanStart].y, m: prevM, count: i - spanStart, start: spanStart, boundary: spanStart > 0 });
       spanStart = i;
       prevM = day.m;
     }
     if (i === periodDays.length - 1) {
-      spanData.push({ y: day.y, m: day.m, count: periodDays.length - spanStart, boundary: spanStart > 0 });
+      spanData.push({ y: day.y, m: day.m, count: periodDays.length - spanStart, start: spanStart, boundary: spanStart > 0 });
     }
   });
 
@@ -1081,7 +1130,7 @@ function renderTable() {
   html += '<tr>';
   html += `<th class="col-name dh-month" rowspan="3">氏名</th>`;
   spanData.forEach(s => {
-    html += `<th class="dh-month${s.boundary ? ' month-boundary' : ''}" colspan="${s.count}">${s.y}年${s.m}月</th>`;
+    html += `<th class="dh-month dh-month-th${s.boundary ? ' month-boundary' : ''}" colspan="${s.count}" data-mh-start="${s.start}" data-mh-count="${s.count}">${s.y}年${s.m}月</th>`;
   });
   html += `<th class="col-sum dh-month col-sum-total">計</th>${sumEmpty}</tr>`;
 
@@ -1091,7 +1140,7 @@ function renderTable() {
     const dc  = dayClass(day.y, day.m, day.d);
     const hol = isHoliday(day.y, day.m, day.d) ? HOLIDAYS[dateStr(day.y, day.m, day.d)] : '';
     const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
-    html += `<th class="dh-num ${dc}${bnd}"${hol ? ` title="${esc(hol)}"` : ''}>${day.d}</th>`;
+    html += `<th class="dh-num ${dc}${bnd}" data-col="${i}"${hol ? ` title="${esc(hol)}"` : ''}>${day.d}</th>`;
   });
   html += `<th class="col-sum col-sum-total">日数</th>${sumEmpty}</tr>`;
 
@@ -1101,7 +1150,7 @@ function renderTable() {
     const dc  = dayClass(day.y, day.m, day.d);
     const dow = dayOfWeek(day.y, day.m, day.d);
     const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
-    html += `<th class="dh-dow ${dc}${bnd}">${DOW_JA[dow]}</th>`;
+    html += `<th class="dh-dow ${dc}${bnd}" data-col="${i}">${DOW_JA[dow]}</th>`;
   });
   html += `<th class="col-sum"></th>${sumEmpty}</tr>`;
   html += '</thead>';
@@ -1190,7 +1239,7 @@ function renderTable() {
     const n   = workCount[dk];
     const dc  = dayClass(day.y, day.m, day.d);
     const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
-    html += `<td class="${dc}${bnd} tfoot-work-count">${n > 0 ? n : ''}</td>`;
+    html += `<td class="${dc}${bnd} tfoot-work-count" data-col="${i}">${n > 0 ? n : ''}</td>`;
   });
   const gHDisp = grandTotalHours > 0 ? (grandTotalHours % 1 === 0 ? grandTotalHours : grandTotalHours.toFixed(1)) : '';
   html += `<td class="col-sum"></td>${SKILL_SHIFTS.map(() => '<td class="col-sum"></td>').join('')}<td class="col-sum col-sum-hours" style="font-weight:bold;">${gHDisp}</td><td class="col-sum col-sum-budget" style="font-weight:bold;">${grandTotalBudget > 0 ? grandTotalBudget.toLocaleString() + '円' : ''}</td></tr>`;
@@ -1203,7 +1252,7 @@ function renderTable() {
       const dk  = dateStr(day.y, day.m, day.d);
       const n   = shiftCount[dk][s.code] || 0;
       const bnd = i > 0 && day.d === 1 ? ' month-boundary' : '';
-      html += `<td class="${bnd}" style="${n > 0 ? `background:${s.bg};color:${s.fg};font-weight:bold;` : ''}">${n > 0 ? n : ''}</td>`;
+      html += `<td class="${bnd}" data-col="${i}" style="${n > 0 ? `background:${s.bg};color:${s.fg};font-weight:bold;` : ''}">${n > 0 ? n : ''}</td>`;
     });
     html += `<td class="col-sum"></td>${SKILL_SHIFTS.map(() => '<td class="col-sum"></td>').join('')}${footExtra()}</tr>`;
   });
@@ -1228,7 +1277,7 @@ function renderTable() {
         cls = act >= req ? 'ws-ok' : 'ws-ng';
         txt = act >= req ? String(act) : `${act}/${req}`;
       }
-      html += `<td class="${cls}${bnd}" title="${esc(ws)}: 実${act} 要${req}">${txt}</td>`;
+      html += `<td class="${cls}${bnd}" data-col="${i}" title="${esc(ws)}: 実${act} 要${req}">${txt}</td>`;
     });
     html += `<td class="col-sum"></td>${SKILL_SHIFTS.map(() => '<td class="col-sum"></td>').join('')}${footExtra()}</tr>`;
   });
@@ -1349,8 +1398,104 @@ function printWithPageSize(size) {
   window.print();
   delete document.body.dataset.printSize;
 }
+
+// 前半または後半のテーブル HTML を生成（独立した <table> として）
+function buildHalfTableHTML(half) {
+  const allDays = getPeriodDays();
+  const subDays = allDays.filter(d => half === 'first' ? d.d <= 15 : d.d > 15);
+  if (!subDays.length) return '';
+
+  const pk = periodKey();
+  const mdata = shiftData[pk] || {};
+
+  // 月ヘッダー用スパン計算
+  const spanData = [];
+  let prevM = null, spanStart = 0;
+  subDays.forEach((day, i) => {
+    if (day.m !== prevM) {
+      if (prevM !== null) spanData.push({ y: subDays[spanStart].y, m: prevM, count: i - spanStart });
+      spanStart = i; prevM = day.m;
+    }
+    if (i === subDays.length - 1) {
+      spanData.push({ y: day.y, m: day.m, count: subDays.length - spanStart });
+    }
+  });
+
+  const lastDay = subDays[subDays.length - 1].d;
+  const halfLabel = half === 'first' ? `前半（1〜15日）` : `後半（16〜${lastDay}日）`;
+
+  let html = `<div class="half-block-title">${esc(getPeriodLabel())}　${halfLabel}</div>`;
+  html += `<table class="half-tbl"><thead>`;
+
+  // 月名行
+  html += `<tr><th class="hn col-name"></th>`;
+  spanData.forEach(s => { html += `<th class="hn" colspan="${s.count}">${s.y}年${s.m}月</th>`; });
+  html += `</tr>`;
+
+  // 日付行
+  html += `<tr><th class="hn col-name"></th>`;
+  subDays.forEach(day => {
+    const dc = dayClass(day.y, day.m, day.d);
+    html += `<th class="hn ${dc}">${day.d}</th>`;
+  });
+  html += `</tr>`;
+
+  // 曜日行
+  html += `<tr><th class="hn col-name"></th>`;
+  subDays.forEach(day => {
+    const dc = dayClass(day.y, day.m, day.d);
+    const dow = dayOfWeek(day.y, day.m, day.d);
+    html += `<th class="hn ${dc}">${DOW_JA[dow]}</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+
+  // スタッフ行
+  staffList.forEach(name => {
+    const sdata = mdata[name] || {};
+    html += `<tr><td class="col-name">${esc(name)}</td>`;
+    subDays.forEach(day => {
+      const dk = dateStr(day.y, day.m, day.d);
+      const dc = dayClass(day.y, day.m, day.d);
+      const code = sdata[dk] || '';
+      const s = SHIFT_MAP[code];
+      const style = s ? `background:${s.bg};color:${s.fg};font-weight:bold;` : '';
+      const content = (!code || code === '休') ? '' : esc(code);
+      html += `<td class="${dc}" style="${style}">${content}</td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  return html;
+}
+
+function doHalfPrint(htmlContent) {
+  const area = document.getElementById('half-print-area');
+  area.innerHTML = htmlContent;
+  let st = document.getElementById('print-page-size-override');
+  if (!st) { st = document.createElement('style'); st.id = 'print-page-size-override'; document.head.appendChild(st); }
+  st.textContent = `@page { size: A4 portrait; margin: 8mm; }`;
+  document.body.classList.add('printing-halves');
+  window.print();
+  document.body.classList.remove('printing-halves');
+}
+
+function printHalfMonth(half) {
+  doHalfPrint(`<div class="half-print-section">${buildHalfTableHTML(half)}</div>`);
+}
+
+function printBothHalves() {
+  doHalfPrint(
+    `<div class="half-print-section">${buildHalfTableHTML('first')}</div>` +
+    `<div class="half-print-section">${buildHalfTableHTML('second')}</div>`
+  );
+}
+
 document.getElementById('printA4Btn').addEventListener('click', () => printWithPageSize('A4'));
 document.getElementById('printA3Btn').addEventListener('click', () => printWithPageSize('A3'));
+document.getElementById('printFirstHalfBtn').addEventListener('click', () => printHalfMonth('first'));
+document.getElementById('printSecondHalfBtn').addEventListener('click', () => printHalfMonth('second'));
+document.getElementById('printBothHalvesBtn').addEventListener('click', () => printBothHalves());
 document.getElementById('bikoText').addEventListener('input', () => {
   const pk = periodKey();
   bikoNotes[pk] = document.getElementById('bikoText').value;
