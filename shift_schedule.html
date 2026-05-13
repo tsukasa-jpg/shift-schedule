@@ -353,6 +353,30 @@
     }
     .req-off-remove:hover { color: #c53030; }
 
+    /* ===== 要望・制約 ===== */
+    .consec-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: #333; }
+    .consec-input { width: 52px; padding: 3px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; text-align: center; }
+    .dc-add-row { display: flex; gap: 5px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+    .dc-type-sel {
+      padding: 4px 5px; border: 1px solid #c0c8d4; border-radius: 4px;
+      font-size: 11px; font-family: inherit; color: #333; background: #f7f9fc;
+    }
+    .dc-hour-input { width: 46px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; text-align: center; }
+    .dc-memo-input { flex: 1; min-width: 80px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; }
+    .dc-add-btn { padding: 4px 10px; background: #805ad5; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; white-space: nowrap; }
+    .dc-add-btn:hover { background: #6b46c1; }
+    .dc-list { display: flex; flex-direction: column; gap: 4px; }
+    .dc-tag {
+      display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap;
+      background: #faf5ff; border: 1px solid #d6bcfa; border-radius: 6px;
+      padding: 3px 8px; font-size: 11px; color: #553c9a;
+    }
+    .dc-tag.type-end    { background: #fff5f5; border-color: #feb2b2; color: #9b2c2c; }
+    .dc-tag.type-start  { background: #f0fff4; border-color: #9ae6b4; color: #276749; }
+    .dc-tag.type-consec { background: #fffaf0; border-color: #fbd38d; color: #744210; }
+    .dc-remove { background: none; border: none; cursor: pointer; color: #888; font-size: 13px; line-height: 1; padding: 0; margin-left: 2px; }
+    .dc-remove:hover { color: #c53030; }
+
     /* ===== REQUIREMENTS DIALOG ===== */
     #reqDialog { width: 540px; }
     .req-table-wrap { overflow-x: auto; flex: 1; }
@@ -685,6 +709,7 @@
     <p class="auto-note">
       ※ シフトスキルが未設定のスタッフはスキップします。<br>
       ※ 作業要件の調整：必要人数に達しない日は、該当スキル保持者の休みを出勤に変更します。<br>
+      ※ スタッフ管理の「要望・制約」（連勤制限・時刻制約）を自動反映します。<br>
       ※ スキル設定は「スタッフ管理」から行ってください。
     </p>
     <div class="modal-footer">
@@ -1730,7 +1755,8 @@ function runAutoCreate() {
 
     if (!shiftData[pk][name]) shiftData[pk][name] = {};
 
-    const rotation = shuffle([...skills.filter(c => c !== '誕')]);
+    const baseSkills = skills.filter(c => c !== '誕');
+    const rotation = shuffle([...baseSkills]);
     let rotIdx = 0;
 
     days.forEach(day => {
@@ -1750,10 +1776,36 @@ function runAutoCreate() {
       if (isRegularDayOff(name, day.y, day.m, day.d))   { shiftData[pk][name][dk] = '休'; return; }
       if (isRequestedDayOff(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
 
-      shiftData[pk][name][dk] = rotation[rotIdx % rotation.length];
+      // 日付制約（時刻フィルター）
+      const validShifts = getValidShiftsForDate(name, dk, baseSkills);
+      const pool = validShifts.length > 0 ? validShifts : baseSkills;
+      shiftData[pk][name][dk] = pool[rotIdx % pool.length];
       rotIdx++;
       if (rotIdx > 0 && rotIdx % rotation.length === 0) shuffleInPlace(rotation);
     });
+
+    // 連勤制限：最大連勤日数を超えたら休みを挿入
+    const maxC = getMaxConsecutive(name);
+    if (maxC > 0) {
+      let streak = 0;
+      days.forEach(day => {
+        const dk  = dateStr(day.y, day.m, day.d);
+        const code = shiftData[pk][name][dk] || '';
+        const isWork = code && code !== '休';
+        if (isWork) {
+          streak++;
+          if (streak > maxC) {
+            // 定休日・希望休でなければ休みに変更
+            if (!isRegularDayOff(name, day.y, day.m, day.d) && !isRequestedDayOff(name, day.y, day.m, day.d)) {
+              shiftData[pk][name][dk] = '休';
+              streak = 0;
+            }
+          }
+        } else {
+          streak = 0;
+        }
+      });
+    }
   });
 
   // Phase 2: satisfy work skill requirements (if optWorkSkill)
@@ -1952,6 +2004,27 @@ function renderStaffList() {
           </div>
           <div class="req-off-list" id="req-list-${i}">${reqTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
         </div>
+        <div class="skill-section-title">要望・制約</div>
+        <div class="consec-row">
+          <span>最大連勤日数:</span>
+          <input type="number" class="consec-input" id="consec-${i}" data-type="consec" data-si="${i}"
+            value="${getMaxConsecutive(name) || ''}" min="1" max="31" placeholder="無制限">
+          <span>日（空欄=制限なし）</span>
+        </div>
+        <div style="margin-top:6px;">
+          <div class="dc-add-row">
+            <input type="date" class="req-off-date-input" id="dc-date-${i}" data-si="${i}">
+            <select class="dc-type-sel" id="dc-type-${i}">
+              <option value="endBy">〇時まで</option>
+              <option value="startFrom">〇時から</option>
+              <option value="memo">メモ</option>
+            </select>
+            <span id="dc-hour-wrap-${i}"><input type="number" class="dc-hour-input" id="dc-hour-${i}" min="0" max="23" placeholder="時"> 時</span>
+            <input type="text" class="dc-memo-input" id="dc-memo-${i}" placeholder="内容" style="display:none;">
+            <button class="dc-add-btn" data-action="addDc" data-si="${i}">追加</button>
+          </div>
+          <div class="dc-list" id="dc-list-${i}">${buildDcTags(name, i)}</div>
+        </div>
         ${staffType !== '社員' ? `
         <div class="skill-section-title">時給</div>
         <div class="skill-wage-row">
@@ -2013,6 +2086,42 @@ document.getElementById('staffListEl').addEventListener('click', e => {
       return;
     }
 
+    if (action === 'addDc') {
+      const si   = parseInt(actionBtn.dataset.si, 10);
+      const name = staffList[si];
+      const dk   = document.getElementById(`dc-date-${si}`)?.value;
+      const type = document.getElementById(`dc-type-${si}`)?.value;
+      if (!dk) return;
+      ensureSkillObj(name);
+      // 同日付の既存エントリを上書き
+      staffSkills[name].dateConstraints = staffSkills[name].dateConstraints.filter(c => c.dk !== dk);
+      if (type === 'memo') {
+        const text = document.getElementById(`dc-memo-${si}`)?.value.trim();
+        if (!text) return;
+        staffSkills[name].dateConstraints.push({ dk, type: 'memo', text });
+      } else {
+        const val = parseInt(document.getElementById(`dc-hour-${si}`)?.value, 10);
+        if (isNaN(val) || val < 0 || val > 23) return;
+        staffSkills[name].dateConstraints.push({ dk, type, value: val });
+      }
+      staffSkills[name].dateConstraints.sort((a, b) => a.dk.localeCompare(b.dk));
+      saveData();
+      refreshDcList(si, name);
+      document.getElementById(`dc-date-${si}`).value = '';
+      return;
+    }
+
+    if (action === 'removeDc') {
+      const si = parseInt(actionBtn.dataset.si, 10);
+      const ci = parseInt(actionBtn.dataset.ci, 10);
+      const name = staffList[si];
+      ensureSkillObj(name);
+      staffSkills[name].dateConstraints.splice(ci, 1);
+      saveData();
+      refreshDcList(si, name);
+      return;
+    }
+
     return;
   }
 
@@ -2068,8 +2177,59 @@ document.getElementById('staffListEl').addEventListener('click', e => {
 
 function ensureSkillObj(name) {
   if (!staffSkills[name]) {
-    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0 };
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [] };
   }
+  if (staffSkills[name].maxConsecutive === undefined) staffSkills[name].maxConsecutive = 0;
+  if (!staffSkills[name].dateConstraints) staffSkills[name].dateConstraints = [];
+}
+
+function getMaxConsecutive(name)   { return staffSkills[name]?.maxConsecutive ?? 0; }
+function getDateConstraints(name)  { return staffSkills[name]?.dateConstraints ?? []; }
+
+/** "HH:MM" 形式を時間数(float)に変換 */
+function parseHourStr(s) {
+  if (!s) return null;
+  const [h, m] = s.split(':').map(Number);
+  return h + (m || 0) / 60;
+}
+
+/** シフトコードの開始・終了時刻を返す {start, end} (null if '-') */
+function getShiftHours(code) {
+  const s = SHIFT_MAP[code];
+  if (!s || s.time === '-') return null;
+  const [startStr, endStr] = s.time.split('～');
+  return { start: parseHourStr(startStr), end: parseHourStr(endStr) };
+}
+
+/** 日付制約を考慮して使用可能なシフトコード一覧を返す */
+function getValidShiftsForDate(name, dk, skills) {
+  const dc = getDateConstraints(name).find(c => c.dk === dk);
+  if (!dc || dc.type === 'memo') return skills;
+  return skills.filter(code => {
+    const h = getShiftHours(code);
+    if (!h) return true;
+    if (dc.type === 'endBy'    && h.end   > dc.value) return false;
+    if (dc.type === 'startFrom' && h.start < dc.value) return false;
+    return true;
+  });
+}
+
+function buildDcTags(name, i) {
+  const list = getDateConstraints(name);
+  if (!list.length) return '<span style="font-size:11px;color:#aaa;">未設定</span>';
+  return list.map((dc, ci) => {
+    const [,m2,d2] = dc.dk.split('-').map(Number);
+    let label, cls;
+    if (dc.type === 'endBy')     { label = `${m2}/${d2} ${dc.value}時まで`;  cls = 'type-end'; }
+    else if (dc.type === 'startFrom') { label = `${m2}/${d2} ${dc.value}時から`; cls = 'type-start'; }
+    else                         { label = `${m2}/${d2} ${dc.text}`;          cls = ''; }
+    return `<span class="dc-tag ${cls}">${label}<button class="dc-remove" data-action="removeDc" data-si="${i}" data-ci="${ci}" title="削除">×</button></span>`;
+  }).join('');
+}
+
+function refreshDcList(si, name) {
+  const el = document.getElementById(`dc-list-${si}`);
+  if (el) el.innerHTML = buildDcTags(name, si);
 }
 
 /** 希望休タグリストだけを再描画（スタッフ一覧全体を再描画せず） */
@@ -2113,6 +2273,22 @@ document.getElementById('staffListEl').addEventListener('change', e => {
     ensureSkillObj(name);
     staffSkills[name].hourlyWage = parseInt(e.target.value, 10) || 0;
     saveData();
+  }
+  if (e.target.dataset.type === 'consec') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].maxConsecutive = parseInt(e.target.value, 10) || 0;
+    saveData();
+  }
+  // 制約種別セレクトの切り替え: 時刻 ↔ メモ 入力欄を切り替え
+  if (e.target.classList.contains('dc-type-sel')) {
+    const si = parseInt(e.target.id.replace('dc-type-', ''), 10);
+    const isMemo = e.target.value === 'memo';
+    const hourWrap = document.getElementById(`dc-hour-wrap-${si}`);
+    const memoInp  = document.getElementById(`dc-memo-${si}`);
+    if (hourWrap) hourWrap.style.display = isMemo ? 'none' : '';
+    if (memoInp)  memoInp.style.display  = isMemo ? '' : 'none';
   }
 });
 
