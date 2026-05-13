@@ -421,15 +421,15 @@
     }
     .half-tbl {
       border-collapse: collapse; width: 100%;
-      font-size: 8.5px; font-family: 'Meiryo UI', 'Meiryo', sans-serif;
+      font-size: 9.5px; font-family: 'Meiryo UI', 'Meiryo', sans-serif;
     }
     .half-tbl th, .half-tbl td {
-      border: 1px solid #bbb; padding: 1px 1px;
+      border: 1px solid #bbb; padding: 1px 2px;
       text-align: center; white-space: nowrap;
-      height: 15px; overflow: hidden;
+      height: 16px; overflow: hidden;
     }
     .half-tbl .col-name {
-      text-align: left; padding-left: 4px; font-weight: bold; width: 18mm;
+      text-align: left; padding-left: 4px; font-weight: bold; width: 20mm;
     }
     .half-tbl .hn { background: #2c4f78 !important; color: #fff !important; }
     .half-tbl .hn.d-sat { background: #bed8f5 !important; color: #1a4a80 !important; }
@@ -444,6 +444,24 @@
         display: block !important;
         font-family: 'Meiryo UI', 'Meiryo', sans-serif;
       }
+      /* A4横・両面印刷: 前半・後半それぞれ1ページに収める */
+      body.printing-halves .half-tbl {
+        font-size: 9.5px;
+        width: 100%;
+        table-layout: fixed;
+      }
+      body.printing-halves .half-tbl th,
+      body.printing-halves .half-tbl td {
+        height: 16px;
+        padding: 1px 2px;
+        font-size: 9.5px;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      body.printing-halves .half-tbl .col-name { width: 20mm; }
+      body.printing-halves .half-block-title { font-size: 10px; margin-bottom: 2px; }
+      body.printing-halves .half-print-section { page-break-after: always; }
+      body.printing-halves .half-print-section:last-child { page-break-after: avoid; }
     }
 
     /* ===== PRINT ===== */
@@ -576,9 +594,9 @@
     <button class="hbtn hbtn-ghost"  id="paidLeaveBtn">有給管理</button>
     <button class="hbtn hbtn-ghost"  id="printA4Btn">A4印刷</button>
     <button class="hbtn hbtn-ghost"  id="printA3Btn">A3印刷</button>
-    <button class="hbtn hbtn-ghost"  id="printFirstHalfBtn">前半(1-15日)</button>
-    <button class="hbtn hbtn-ghost"  id="printSecondHalfBtn">後半(16-末日)</button>
-    <button class="hbtn hbtn-ghost"  id="printBothHalvesBtn">両面印刷</button>
+    <button class="hbtn hbtn-ghost"  id="printBothHalvesBtn">両面印刷(A4横)</button>
+    <button class="hbtn hbtn-ghost"  id="printFirstHalfBtn">前半のみ</button>
+    <button class="hbtn hbtn-ghost"  id="printSecondHalfBtn">後半のみ</button>
     <button class="hbtn hbtn-ghost" id="syncBtn" title="Supabaseから最新データを読み込む" style="display:none;">↻ 同期</button>
     <span id="syncStatus" style="font-size:10px; white-space:nowrap;"></span>
   </div>
@@ -1474,7 +1492,7 @@ function doHalfPrint(htmlContent) {
   area.innerHTML = htmlContent;
   let st = document.getElementById('print-page-size-override');
   if (!st) { st = document.createElement('style'); st.id = 'print-page-size-override'; document.head.appendChild(st); }
-  st.textContent = `@page { size: A4 portrait; margin: 8mm; }`;
+  st.textContent = `@page { size: A4 landscape; margin: 4mm; }`;
   document.body.classList.add('printing-halves');
   window.print();
   document.body.classList.remove('printing-halves');
