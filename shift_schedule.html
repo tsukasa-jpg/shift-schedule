@@ -1730,7 +1730,7 @@ function runAutoCreate() {
 
     if (!shiftData[pk][name]) shiftData[pk][name] = {};
 
-    const rotation = shuffle([...skills]);
+    const rotation = shuffle([...skills.filter(c => c !== '誕')]);
     let rotIdx = 0;
 
     days.forEach(day => {
@@ -1885,7 +1885,7 @@ function renderStaffList() {
     const reqOff     = getRequestedDaysOff(name); // date strings
     const staffType  = getStaffType(name);
 
-    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給').map(s =>
+    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕').map(s =>
       `<span class="skill-chip${shiftSkls.includes(s.code) ? ' active' : ''}"
              style="background:${s.bg};color:${s.fg};"
              data-type="shift" data-si="${i}" data-code="${esc(s.code)}">${esc(s.code)}</span>`
