@@ -538,9 +538,10 @@
       /* 氏名列は固定幅・見やすく、日付列は残り幅を均等分配 */
       .col-name  { width: 20mm; min-width: unset; max-width: unset; font-size: 9px; font-weight: bold; }
       .dh-num, .dh-dow, .dh-month, .shift-cell { width: auto; min-width: unset; }
-      /* 休セルは白背景・文字なし */
+      /* 出勤以外のセルは白背景 */
       .shift-rest { background: #fff !important; color: #fff !important; }
-      /* 土日列：シフトセルは白背景（出勤セルには .d-sat/.d-sun が付かないため出勤色は保持される） */
+      .cell-req-off { background-color: #fff !important; }
+      .cell-reg-off { background-color: #fff !important; }
       .shift-cell.d-sat,
       .shift-cell.d-sun,
       .shift-cell.d-hol { background-color: #fff !important; color: #000 !important; }
@@ -572,6 +573,16 @@
         font-size: 8px;
         flex: 1;
       }
+
+      /* 半月印刷の備考欄 */
+      .half-biko-section {
+        display: flex !important;
+        margin-top: 4px; border: 1px solid #999; border-radius: 3px;
+        padding: 3px 6px; font-size: 8px; gap: 6px; align-items: flex-start;
+        background: #fff;
+      }
+      .half-biko-label { font-weight: bold; white-space: nowrap; }
+      .half-biko-text { white-space: pre-wrap; flex: 1; min-height: 16px; }
 
       /* 誕生日マーク：印刷では絵文字を非表示にして「誕」テキストを表示 */
       .tan-screen { display: none !important; }
@@ -1507,8 +1518,9 @@ function buildHalfTableHTML(half) {
       const s = SHIFT_MAP[code];
       const style = s ? `background:${s.bg};color:${s.fg};font-weight:bold;` : '';
       const dcCls = s ? '' : dc;
+      const restCls = code === '休' ? ' shift-rest' : '';
       const content = (!code || code === '休') ? '' : esc(code);
-      html += `<td class="${dcCls}" style="${style}">${content}</td>`;
+      html += `<td class="${dcCls}${restCls}" style="${style}">${content}</td>`;
     });
     html += `</tr>`;
   });
@@ -1528,14 +1540,19 @@ function doHalfPrint(htmlContent) {
   document.body.classList.remove('printing-halves');
 }
 
+function halfBikoHtml() {
+  const bikoText = bikoNotes[periodKey()] || '';
+  return `<div class="half-biko-section"><span class="half-biko-label">備考</span><div class="half-biko-text">${esc(bikoText)}</div></div>`;
+}
+
 function printHalfMonth(half) {
-  doHalfPrint(`<div class="half-print-section">${buildHalfTableHTML(half)}</div>`);
+  doHalfPrint(`<div class="half-print-section">${buildHalfTableHTML(half)}${halfBikoHtml()}</div>`);
 }
 
 function printBothHalves() {
   doHalfPrint(
     `<div class="half-print-section">${buildHalfTableHTML('first')}</div>` +
-    `<div class="half-print-section">${buildHalfTableHTML('second')}</div>`
+    `<div class="half-print-section">${buildHalfTableHTML('second')}${halfBikoHtml()}</div>`
   );
 }
 
