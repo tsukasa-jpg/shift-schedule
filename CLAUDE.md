@@ -93,14 +93,16 @@ Phase 1 → Phase 2 の2段階:
 | `renderTable()` | メインのシフト表を全列再生成 |
 | `openPopup(td, si, di)` | セルクリック時のシフト選択ポップアップ |
 | `buildHalfTableHTML(half)` | 印刷用テーブルHTML生成（'first'=1-15日 / 'second'=16-末日） |
+| `halfBikoHtml()` | 半月印刷用の備考欄HTML文字列を生成（`buildHalfTableHTML` の末尾に連結して使う） |
 | `doHalfPrint(html)` | `#half-print-area` に HTML を注入して `body.printing-halves` で印刷 |
 | `getValidShiftsForDate(name, dk, skills)` | 日付制約を考慮した使用可能シフト一覧を返す |
 | `getShiftHours(code)` | シフトコードの開始・終了時刻を `{start, end}` で返す |
 
 ### 印刷の仕組み
 
-- **A4横・A3横**（通常月間印刷）: `printWithPageSize(size)` でページサイズを動的注入して `window.print()`
-- **両面印刷（A4横）**: `printBothHalves()` → `doHalfPrint()` で `#half-print-area` に前半・後半の独立テーブルを生成。`body.printing-halves` クラスで既存コンテンツを非表示にして印刷。`@page { size: A4 landscape; margin: 4mm; }` を動的設定。
+- **A4横・A3横**（通常月間印刷）: `printWithPageSize(size)` でページサイズを動的注入して `window.print()`。`#biko-section` は通常の DOM 要素として `@media print` CSS で表示される。
+- **前半のみ・後半のみ・両面印刷（A4横）**: `printHalfMonth(half)` / `printBothHalves()` → `doHalfPrint()` で `#half-print-area` に前半・後半の独立テーブルを生成。`body.printing-halves` クラスで `#half-print-area` 以外を `display: none !important` にして印刷。備考欄は `halfBikoHtml()` で HTML 文字列として生成し、最後の `half-print-section` の末尾に連結して埋め込む（`#biko-section` DOM 要素は `body.printing-halves` で非表示になるため）。
+- **背景色の印刷**: セルの背景色はブラウザのデフォルト設定では印刷されない。`print-color-adjust: exact` と `-webkit-print-color-adjust: exact` を `@media print` 内のセルセレクタに付与して強制出力している。
 
 ### 祝日・会社休日
 
