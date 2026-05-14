@@ -146,8 +146,8 @@
       transition: filter 0.08s; font-weight: bold; position: relative;
     }
     .shift-cell:hover { filter: brightness(0.86); }
-    .shift-cell.d-sat { background-color: #e8f2fc; color: #1a4a80; font-weight: normal; }
-    .shift-cell.d-sun, .shift-cell.d-hol { background-color: #fef0f0; color: #801010; font-weight: normal; }
+    .shift-cell.d-sat { background-color: #fff !important; color: #1a4a80; font-weight: normal; }
+    .shift-cell.d-sun, .shift-cell.d-hol { background-color: #fff !important; color: #801010; font-weight: normal; }
 
     .skill-warn { outline: 2px solid #e53e3e; outline-offset: -2px; }
     .skill-warn::after {
@@ -459,8 +459,8 @@
     .half-tbl .hn.d-sat { background: #bed8f5 !important; color: #1a4a80 !important; }
     .half-tbl .hn.d-sun, .half-tbl .hn.d-hol { background: #fad4d4 !important; color: #a01010 !important; }
     .half-tbl .hn.col-name { background: #1e3a5f !important; color: #fff !important; }
-    .half-tbl td.d-sat { background-color: #e8f2fc; color: #1a4a80; }
-    .half-tbl td.d-sun, .half-tbl td.d-hol { background-color: #fef0f0; color: #801010; }
+    .half-tbl td.d-sat:not(.hn) { background-color: #fff !important; color: #1a4a80; }
+    .half-tbl td.d-sun:not(.hn), .half-tbl td.d-hol:not(.hn) { background-color: #fff !important; color: #801010; }
 
     @media print {
       body.printing-halves > *:not(#half-print-area) { display: none !important; }
@@ -540,6 +540,10 @@
       .dh-num, .dh-dow, .dh-month, .shift-cell { width: auto; min-width: unset; }
       /* 休セルは白背景・文字なし */
       .shift-rest { background: #fff !important; color: #fff !important; }
+      /* 土日列：シフトセルは白背景（出勤セルには .d-sat/.d-sun が付かないため出勤色は保持される） */
+      .shift-cell.d-sat,
+      .shift-cell.d-sun,
+      .shift-cell.d-hol { background-color: #fff !important; color: #000 !important; }
       #shiftTable thead th { position: static; }
       .skill-warn::after  { display: none; }
       .cell-req-off::before { display: none; }
@@ -1502,8 +1506,9 @@ function buildHalfTableHTML(half) {
       const code = sdata[dk] || '';
       const s = SHIFT_MAP[code];
       const style = s ? `background:${s.bg};color:${s.fg};font-weight:bold;` : '';
+      const dcCls = s ? '' : dc;
       const content = (!code || code === '休') ? '' : esc(code);
-      html += `<td class="${dc}" style="${style}">${content}</td>`;
+      html += `<td class="${dcCls}" style="${style}">${content}</td>`;
     });
     html += `</tr>`;
   });
