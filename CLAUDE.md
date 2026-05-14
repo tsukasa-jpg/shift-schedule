@@ -116,6 +116,19 @@ Phase 1 → Phase 2 の2段階:
 { code: '早③', label: '早番③', time: '9:00～15:30', h: 6.5, bg: '#f4ee9c', fg: '#585800' }
 ```
 
+**重要**: `SKILL_SHIFTS = SHIFTS.slice(0, -1)` により **配列の最後の要素は必ずスキル選択対象外**になる。現在の最後の要素は `'休'`。新しいシフトを追加する場合は `'休'` の前に挿入すること。
+
+### 土日カラーの CSS ルール（重要）
+
+土日セルの色制御は以下の仕組みで機能している:
+
+- **ヘッダー行**（`.dh-num`, `.dh-dow`, `.hn`）: `.d-sat`/`.d-sun` クラスを直接付与 → 青/赤で着色
+- **出勤シフトセル**（メイン表）: `const cellDcCls = shift ? '' : dc` により `.d-sat`/`.d-sun` クラスを**付与しない**。インラインスタイルでシフト色を設定
+- **出勤シフトセル**（半月印刷テーブル）: `const dcCls = s ? '' : dc` により同様にクラスを**付与しない**
+- **非出勤セル**（休み・空白など）: `.d-sat`/`.d-sun` クラスが付与されるが、`.shift-cell.d-sat { background-color: #fff !important; }` および `.half-tbl td.d-sat:not(.hn) { background-color: #fff !important; }` で白背景に上書き
+
+この仕組みにより「日付・曜日ヘッダーは土日色あり、出勤セルはシフト色、それ以外は白」が実現されている。
+
 ### Supabase 設定
 
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` はファイル上部にハードコード済み。テーブル名は `shift_app_data`、レコードIDは `'main'`（全データを1レコードで管理）。
