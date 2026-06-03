@@ -612,6 +612,23 @@
       body[data-print-size="A3"] #shiftTable { page-break-after: avoid; }
       body[data-print-size="A3"] #biko-section { page-break-before: avoid; }
     }
+    /* ===== AUTH ===== */
+    #editor-actions { display: none; gap: 6px; flex-wrap: wrap; }
+    .auth-label { font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
+    .auth-input {
+      width: 100%; padding: 8px 10px; border: 1px solid #c0c8d4;
+      border-radius: 5px; font-size: 13px; font-family: inherit; outline: none; box-sizing: border-box;
+    }
+    .auth-input:focus { border-color: #4a90d9; box-shadow: 0 0 0 3px rgba(74,144,217,0.15); }
+    #loginDialog { width: 340px; }
+    #loginError {
+      color: #c53030; font-size: 12px; padding: 6px 10px;
+      background: #fff5f5; border: 1px solid #fed7d7; border-radius: 4px;
+    }
+    #loginUserLabel {
+      font-size: 11px; color: #a0c4f5; white-space: nowrap;
+      max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
@@ -627,15 +644,22 @@
     <button class="hbtn hbtn-green" id="todayBtn">今期</button>
   </div>
   <div class="header-actions">
-    <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
-    <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
-    <button class="hbtn hbtn-ghost"  id="manageStaffBtn">スタッフ管理</button>
-    <button class="hbtn hbtn-ghost"  id="paidLeaveBtn">有給管理</button>
+    <div id="editor-actions">
+      <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
+      <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
+      <button class="hbtn hbtn-ghost"  id="manageStaffBtn">スタッフ管理</button>
+      <button class="hbtn hbtn-ghost"  id="paidLeaveBtn">有給管理</button>
+    </div>
     <button class="hbtn hbtn-ghost"  id="printA4Btn">A4印刷</button>
     <button class="hbtn hbtn-ghost"  id="printA3Btn">A3印刷</button>
     <button class="hbtn hbtn-ghost"  id="printBothHalvesBtn">両面印刷(A4横)</button>
     <button class="hbtn hbtn-ghost"  id="printFirstHalfBtn">前半のみ</button>
     <button class="hbtn hbtn-ghost"  id="printSecondHalfBtn">後半のみ</button>
+    <div id="auth-area" style="display:flex;align-items:center;gap:6px;">
+      <button class="hbtn" id="loginBtn" style="background:#4299e1;color:#fff;">編集者ログイン</button>
+      <span id="loginUserLabel" title=""></span>
+      <button class="hbtn hbtn-ghost" id="logoutBtn" style="display:none;">ログアウト</button>
+    </div>
     <button class="hbtn hbtn-ghost" id="syncBtn" title="Supabaseから最新データを読み込む" style="display:none;">↻ 同期</button>
     <span id="syncStatus" style="font-size:10px; white-space:nowrap;"></span>
   </div>
@@ -754,6 +778,28 @@
   </div>
 </div>
 
+<!-- ===== LOGIN MODAL ===== -->
+<div id="loginOverlay" class="modal-overlay">
+  <div id="loginDialog" class="modal-box">
+    <h2>編集者ログイン</h2>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div>
+        <label class="auth-label" for="loginEmail">メールアドレス</label>
+        <input type="email" id="loginEmail" class="auth-input" placeholder="email@example.com" autocomplete="email">
+      </div>
+      <div>
+        <label class="auth-label" for="loginPassword">パスワード</label>
+        <input type="password" id="loginPassword" class="auth-input" placeholder="パスワード" autocomplete="current-password">
+      </div>
+      <div id="loginError" style="display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="dbtn dbtn-gray" id="loginCancelBtn">キャンセル</button>
+      <button class="dbtn dbtn-blue" id="loginSubmitBtn">ログイン</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -860,7 +906,8 @@ let workSkillReqs = {}; // { wsName: { dow(0-6): count } }
 let bikoNotes     = {}; // { periodKey: string }
 let paidLeaveData = {}; // { name: { "YYYY": { granted: N } } }  YYYY = 年度開始年
 
-let popupTarget = null;
+let popupTarget  = null;
+let currentUser  = null; // Supabase Auth user object (null = not logged in)
 
 /* =====================================================
    STORAGE
@@ -1352,6 +1399,7 @@ function renderTable() {
 document.getElementById('shiftTable').addEventListener('click', e => {
   const cell = e.target.closest('.shift-cell');
   if (!cell) return;
+  if (!currentUser) return;
   e.stopPropagation();
   const si = parseInt(cell.dataset.si, 10);
   const di = parseInt(cell.dataset.di, 10);
@@ -1362,6 +1410,7 @@ document.getElementById('shiftTable').addEventListener('contextmenu', e => {
   const cell = e.target.closest('.shift-cell');
   if (!cell) return;
   e.preventDefault();
+  if (!currentUser) return;
   if (!confirm('シフトをクリアしますか？')) return;
   const si = parseInt(cell.dataset.si, 10);
   const di = parseInt(cell.dataset.di, 10);
@@ -1568,7 +1617,7 @@ document.getElementById('bikoText').addEventListener('input', () => {
   saveData();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closePopup(); closeModal('staffOverlay'); closeModal('reqOverlay'); closeModal('autoOverlay'); closeModal('paidLeaveOverlay'); }
+  if (e.key === 'Escape') { closePopup(); closeModal('staffOverlay'); closeModal('reqOverlay'); closeModal('autoOverlay'); closeModal('paidLeaveOverlay'); closeModal('loginOverlay'); }
 });
 
 /* =====================================================
@@ -2350,6 +2399,83 @@ function moveStaff(idx, dir) {
 }
 
 /* =====================================================
+   AUTH
+===================================================== */
+function onAuthChange(session) {
+  currentUser = session?.user ?? null;
+  const editorActions  = document.getElementById('editor-actions');
+  const loginBtn       = document.getElementById('loginBtn');
+  const logoutBtn      = document.getElementById('logoutBtn');
+  const loginUserLabel = document.getElementById('loginUserLabel');
+  const bikoTextarea   = document.getElementById('bikoText');
+
+  if (currentUser) {
+    if (editorActions)  editorActions.style.display  = 'flex';
+    if (loginBtn)       loginBtn.style.display        = 'none';
+    if (logoutBtn)      logoutBtn.style.display        = '';
+    if (loginUserLabel) { loginUserLabel.style.display = ''; loginUserLabel.textContent = currentUser.email; loginUserLabel.title = currentUser.email; }
+    if (bikoTextarea)   bikoTextarea.readOnly          = false;
+  } else {
+    if (editorActions)  editorActions.style.display  = 'none';
+    if (loginBtn)       loginBtn.style.display        = '';
+    if (logoutBtn)      logoutBtn.style.display        = 'none';
+    if (loginUserLabel) { loginUserLabel.style.display = 'none'; loginUserLabel.textContent = ''; }
+    if (bikoTextarea)   bikoTextarea.readOnly          = true;
+  }
+}
+
+document.getElementById('loginBtn').addEventListener('click', () => {
+  if (!_supabase) { alert('Supabase が設定されていません。'); return; }
+  document.getElementById('loginEmail').value         = '';
+  document.getElementById('loginPassword').value      = '';
+  document.getElementById('loginError').style.display = 'none';
+  openModal('loginOverlay');
+  setTimeout(() => document.getElementById('loginEmail').focus(), 60);
+});
+
+document.getElementById('loginCancelBtn').addEventListener('click', () => closeModal('loginOverlay'));
+document.getElementById('loginOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('loginOverlay')) closeModal('loginOverlay');
+});
+document.getElementById('loginSubmitBtn').addEventListener('click', doLogin);
+document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+async function doLogin() {
+  if (!_supabase) return;
+  const email     = document.getElementById('loginEmail').value.trim();
+  const password  = document.getElementById('loginPassword').value;
+  const errEl     = document.getElementById('loginError');
+  const submitBtn = document.getElementById('loginSubmitBtn');
+
+  if (!email || !password) {
+    errEl.textContent      = 'メールアドレスとパスワードを入力してください。';
+    errEl.style.display    = '';
+    return;
+  }
+
+  submitBtn.disabled    = true;
+  submitBtn.textContent = 'ログイン中…';
+  errEl.style.display   = 'none';
+
+  try {
+    const { error } = await _supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    closeModal('loginOverlay');
+  } catch {
+    errEl.textContent   = 'ログインに失敗しました。メールアドレスとパスワードを確認してください。';
+    errEl.style.display = '';
+  } finally {
+    submitBtn.disabled    = false;
+    submitBtn.textContent = 'ログイン';
+  }
+}
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  if (!_supabase) return;
+  await _supabase.auth.signOut();
+});
+
+/* =====================================================
    INIT
 ===================================================== */
 function updateStickyOffsets() {
@@ -2369,8 +2495,14 @@ function updateStickyOffsets() {
   if (_supabase) {
     document.getElementById('syncBtn').style.display = 'inline-flex';
     document.getElementById('syncBtn').addEventListener('click', () => loadDataFromSupabase());
+    // Auth: ページ再読み込み時のセッション復元 + 状態変化の監視
+    _supabase.auth.getSession().then(({ data: { session } }) => onAuthChange(session));
+    _supabase.auth.onAuthStateChange((_event, session) => onAuthChange(session));
     // 起動時にSupabaseから最新データを自動取得（他のPCと同期）
     loadDataFromSupabase();
+  } else {
+    // Supabase未設定時はローカルモードとして全編集を許可
+    onAuthChange({ user: { email: 'local' } });
   }
 })();
 </script>
