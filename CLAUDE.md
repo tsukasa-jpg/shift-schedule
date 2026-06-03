@@ -97,6 +97,8 @@ Phase 1 → Phase 2 の2段階:
 | `doHalfPrint(html)` | `#half-print-area` に HTML を注入して `body.printing-halves` で印刷 |
 | `getValidShiftsForDate(name, dk, skills)` | 日付制約を考慮した使用可能シフト一覧を返す |
 | `getShiftHours(code)` | シフトコードの開始・終了時刻を `{start, end}` で返す |
+| `onAuthChange(session)` | Supabase Auth セッション変化時に UI 表示を切り替える |
+| `doLogin()` | ログインフォームの値で `signInWithPassword` を呼ぶ（async） |
 
 ### 印刷の仕組み
 
@@ -134,3 +136,29 @@ Phase 1 → Phase 2 の2段階:
 ### Supabase 設定
 
 `SUPABASE_URL` と `SUPABASE_ANON_KEY` はファイル上部にハードコード済み。テーブル名は `shift_app_data`、レコードIDは `'main'`（全データを1レコードで管理）。
+
+### 認証（Supabase Auth）
+
+**アーキテクチャ**: 閲覧（SELECT）は anonymous でも可、書き込み（INSERT/UPDATE/DELETE）は authenticated のみ許可する RLS ポリシーを Supabase 側に設定済み。
+
+**状態変数**: `currentUser`（null = 未ログイン、User オブジェクト = ログイン中）
+
+**UI 制御**:
+- `#editor-actions` div: ログイン時のみ `display:flex`（作業要件設定・自動作成・スタッフ管理・有給管理ボタンを内包）
+- `#bikoText` textarea: ログイン時のみ `readOnly = false`
+- シフトセルの click / contextmenu: `currentUser` が null なら即 `return`（UI は動作するが何も起きない）
+
+**セッション維持**: Supabase JS v2 がセッションを localStorage に自動保存。ページリロード時は `getSession()` で復元し `onAuthChange()` を呼ぶ。
+
+```javascript
+// セッション状態が変わるたびに呼ばれる（ログイン・ログアウト・リロード時）
+function onAuthChange(session) { ... }
+
+// signInWithPassword を呼んでログインする
+async function doLogin() { ... }
+
+// signOut を呼ぶ（onAuthStateChange 経由で onAuthChange が呼ばれる）
+logoutBtn.addEventListener('click', async () => { ... })
+```
+
+**ユーザー管理**: Supabase ダッシュボード → Authentication → Users でユーザーを追加する（アプリ内にサインアップ画面はない）。
