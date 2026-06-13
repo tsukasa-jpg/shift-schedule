@@ -175,6 +175,7 @@
     .col-sum-total { font-weight: bold; color: #1e3a5f; }
     .col-sum-hours { font-weight: bold; color: #5c1888; min-width: 36px; }
     .col-sum-budget { font-weight: bold; color: #7a3500; min-width: 56px; white-space: nowrap; }
+    body:not([data-editor]) .col-sum-budget { display: none !important; }
     .hours-over { background: #fff0f0 !important; color: #c00 !important; }
 
     /* Tfoot */
@@ -2410,12 +2411,14 @@ function onAuthChange(session) {
   const bikoTextarea   = document.getElementById('bikoText');
 
   if (currentUser) {
+    document.body.setAttribute('data-editor', '');
     if (editorActions)  editorActions.style.display  = 'flex';
     if (loginBtn)       loginBtn.style.display        = 'none';
     if (logoutBtn)      logoutBtn.style.display        = '';
     if (loginUserLabel) { loginUserLabel.style.display = ''; loginUserLabel.textContent = currentUser.email; loginUserLabel.title = currentUser.email; }
     if (bikoTextarea)   bikoTextarea.readOnly          = false;
   } else {
+    document.body.removeAttribute('data-editor');
     if (editorActions)  editorActions.style.display  = 'none';
     if (loginBtn)       loginBtn.style.display        = '';
     if (logoutBtn)      logoutBtn.style.display        = 'none';
