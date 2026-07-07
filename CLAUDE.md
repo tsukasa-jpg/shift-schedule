@@ -83,7 +83,7 @@ Phase 1 → Phase 2 の2段階:
    - `optSunRest` が ON かつ日曜・祝日（`workSun=false` の場合）→ 「休」
    - `optSatRest` が ON かつ土曜（`workSat=false` の場合）→ 「休」
    - `isRegularDayOff` / `isRequestedDayOff` → 「休」
-   - `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用しシフトを絞り込み
+   - `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用しシフトを絞り込み。**制約を満たすシフトが1件もない場合は制約に違反させず「休」にする**（以前は該当スキル全体にフォールバックして制約を無視していたバグがあった）。この「休」は `renderTable()` で `cell-dc-off`（薄紫＋「制」バッジ）として表示され、定休日（`cell-reg-off`）・希望休（`cell-req-off`）と視覚的に区別できる
    - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更
 
 2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日・**連勤上限**は上書きしない（`wouldExceedMaxConsecutive()` でPhase2の割り当てが連勤上限を超えないか事前チェックする。Phase1末尾の連勤トリムはPhase1終了時点のデータしか見ないため、Phase2でこのチェックがないと「休みへの変更」で確保したはずの連勤制限がPhase2の穴埋めで再び上書きされてしまう）。割り当てる際も `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用する（Phase 1 と同様、無視しないこと）。
