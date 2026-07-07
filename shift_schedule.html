@@ -1932,7 +1932,7 @@ function runAutoCreate() {
 
   // Phase 2: satisfy work skill requirements (if optWorkSkill)
   if (optWorkSkill) {
-    days.forEach(day => {
+    days.forEach((day, dayIdx) => {
       const dk  = dateStr(day.y, day.m, day.d);
       const dow = dayOfWeek(day.y, day.m, day.d);
 
@@ -1950,14 +1950,15 @@ function runAutoCreate() {
         if (gap <= 0) return;
 
         // Find staff with this work skill who are on 休 and have shift skills
-        // 社員の会社カレンダー休業日・定休日・希望休は上書きしない
+        // 社員の会社カレンダー休業日・定休日・希望休・連勤上限は上書きしない
         const candidates = staffList.filter(name => {
           const c      = shiftData[pk]?.[name]?.[dk] || '';
           const sSkils = getShiftSkills(name);
           return c === '休' && getWorkSkills(name).includes(ws) && sSkils.length > 0
             && !(getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d))
             && !isRegularDayOff(name, day.y, day.m, day.d)
-            && !isRequestedDayOff(name, day.y, day.m, day.d);
+            && !isRequestedDayOff(name, day.y, day.m, day.d)
+            && !wouldExceedMaxConsecutive(name, dayIdx, days, pk);
         });
 
         for (const cand of candidates) {
@@ -2354,6 +2355,20 @@ function getValidShiftsForDate(name, dk, skills) {
     if (dc.type === 'startFrom' && h.start < dc.value) return false;
     return true;
   });
+}
+
+/** dayIdx日にnameを出勤扱いにした場合、連勤上限（maxConsecutive）を超えるかどうかを判定
+    （直前の連続勤務日数をshiftDataから遡って数える。Phase2は日付の昇順で処理するため後方チェックは不要） */
+function wouldExceedMaxConsecutive(name, dayIdx, days, pk) {
+  const maxC = getMaxConsecutive(name);
+  if (maxC <= 0) return false;
+  let streak = 1;
+  for (let i = dayIdx - 1; i >= 0; i--) {
+    const dk2  = dateStr(days[i].y, days[i].m, days[i].d);
+    const code = shiftData[pk]?.[name]?.[dk2] || '';
+    if (code && code !== '休') streak++; else break;
+  }
+  return streak > maxC;
 }
 
 function buildDcTags(name, i) {

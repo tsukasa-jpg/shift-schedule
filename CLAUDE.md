@@ -86,7 +86,7 @@ Phase 1 → Phase 2 の2段階:
    - `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用しシフトを絞り込み
    - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更
 
-2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日は上書きしない。割り当てる際も `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用する（Phase 1 と同様、無視しないこと）。
+2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日・**連勤上限**は上書きしない（`wouldExceedMaxConsecutive()` でPhase2の割り当てが連勤上限を超えないか事前チェックする。Phase1末尾の連勤トリムはPhase1終了時点のデータしか見ないため、Phase2でこのチェックがないと「休みへの変更」で確保したはずの連勤制限がPhase2の穴埋めで再び上書きされてしまう）。割り当てる際も `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用する（Phase 1 と同様、無視しないこと）。
 
 **重要な制約**: `誕`（誕生日休暇）はシフトスキルチップに表示しない・ローテーションから除外。`birthMonth`/`birthDay` が設定されていれば自動作成時に自動セットされる（スタッフ管理画面で設定）。それ以外の日は従来通り手動入力専用。
 
@@ -100,6 +100,7 @@ Phase 1 → Phase 2 の2段階:
 | `halfBikoHtml()` | 半月印刷用の備考欄HTML文字列を生成（`buildHalfTableHTML` の末尾に連結して使う） |
 | `doHalfPrint(html)` | `#half-print-area` に HTML を注入して `body.printing-halves` で印刷 |
 | `getValidShiftsForDate(name, dk, skills)` | 日付制約を考慮した使用可能シフト一覧を返す |
+| `wouldExceedMaxConsecutive(name, dayIdx, days, pk)` | dayIdx日を出勤扱いにすると連勤上限を超えるか判定（Phase2専用、直前日から遡ってカウント） |
 | `getShiftHours(code)` | シフトコードの開始・終了時刻を `{start, end}` で返す |
 | `onAuthChange(session)` | Supabase Auth セッション変化時に UI 表示を切り替える |
 | `doLogin()` | ログインフォームの値で `signInWithPassword` を呼ぶ（async） |
