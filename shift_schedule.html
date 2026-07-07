@@ -191,6 +191,14 @@
     .ws-ng   { background: #fed7d7 !important; color: #742a2a !important; font-weight: bold; }
     .ws-zero { background: #f4f6fa !important; color: #aaa !important; }
 
+    /* Work skill coverage summary badge (header) */
+    .ws-cov-badge {
+      display: none; font-size: 11px; font-weight: bold; padding: 4px 10px;
+      border-radius: 12px; cursor: pointer; white-space: nowrap;
+    }
+    .ws-cov-badge.cov-ok { display: inline-block; background: #c6f6d5; color: #22543d; }
+    .ws-cov-badge.cov-ng { display: inline-block; background: #fed7d7; color: #742a2a; }
+
     /* Work skill badges in staff name cell */
     .ws-badge {
       display: inline-block; font-size: 9px; padding: 0 3px;
@@ -648,6 +656,7 @@
     <button class="hbtn hbtn-green" id="todayBtn">今期</button>
   </div>
   <div class="header-actions">
+    <span id="wsCoverageBadge" class="ws-cov-badge" title="クリックで作業スキルカバレッジ詳細へ移動"></span>
     <div id="editor-actions">
       <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
       <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
@@ -739,7 +748,7 @@
     </div>
     <div class="auto-option">
       <input type="checkbox" id="optSunRest" checked>
-      <label for="optSunRest">日曜・祝日は「休み」にする</label>
+      <label for="optSunRest">日曜・祝日は「休み」にする（個人設定で上書き可）</label>
     </div>
     <div class="auto-option">
       <input type="checkbox" id="optWorkSkill" checked>
@@ -1086,6 +1095,7 @@ function setShift(staff, dayObj, code) {
 function getShiftSkills(name)      { return staffSkills[name]?.shifts        ?? []; }
 function getWorkSkills(name)       { return staffSkills[name]?.workSkills     ?? []; }
 function getWorkSat(name)          { return staffSkills[name]?.workSat        ?? false; }
+function getWorkSun(name)          { return staffSkills[name]?.workSun        ?? false; }
 function getRegularDaysOff(name)   { return staffSkills[name]?.regularDaysOff ?? []; }   // array of DOW (0-6)
 function getRequestedDaysOff(name) { return staffSkills[name]?.requestedDaysOff ?? []; } // array of 'YYYY-MM-DD'
 function getStaffType(name)        { return staffSkills[name]?.type           ?? 'パート'; } // 'パート' | '社員'
@@ -1372,8 +1382,34 @@ function renderTable() {
   });
 
   // ---- Work skill coverage rows ----
+  // 充足状況を集計（ヘッダーバッジ用）
+  let wsReqCells = 0, wsShortfallCells = 0;
+  periodDays.forEach(day => {
+    const dk  = dateStr(day.y, day.m, day.d);
+    const dow = dayOfWeek(day.y, day.m, day.d);
+    WORK_SKILLS.forEach(ws => {
+      const req = getWsReq(ws, dow);
+      if (req > 0) {
+        wsReqCells++;
+        if ((wsCount[dk][ws] || 0) < req) wsShortfallCells++;
+      }
+    });
+  });
+  const covBadge = document.getElementById('wsCoverageBadge');
+  if (covBadge) {
+    if (wsReqCells === 0) {
+      covBadge.className = 'ws-cov-badge';
+      covBadge.textContent = '';
+      covBadge.onclick = null;
+    } else {
+      covBadge.className = 'ws-cov-badge ' + (wsShortfallCells > 0 ? 'cov-ng' : 'cov-ok');
+      covBadge.textContent = wsShortfallCells > 0 ? `⚠ 作業要件 ${wsShortfallCells}件未達` : '✓ 作業要件 充足';
+      covBadge.onclick = () => document.getElementById('wsCoverageTitleRow')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
   // Separator row
-  html += `<tr><th class="col-name" colspan="${periodDays.length + 1 + SKILL_SHIFTS.length + 2}" style="background:#1e3a5f;color:#fff;font-size:10px;text-align:left;padding-left:8px;">▼ 作業スキルカバレッジ（実績 / 必要）</th></tr>`;
+  html += `<tr id="wsCoverageTitleRow"><th class="col-name" colspan="${periodDays.length + 1 + SKILL_SHIFTS.length + 2}" style="background:#1e3a5f;color:#fff;font-size:10px;text-align:left;padding-left:8px;">▼ 作業スキルカバレッジ（実績 / 必要）</th></tr>`;
 
   WORK_SKILLS.forEach(ws => {
     const st = WS_STYLE[ws];
@@ -1831,6 +1867,7 @@ function runAutoCreate() {
   staffList.forEach(name => {
     const skills  = getShiftSkills(name);
     const workSat = getWorkSat(name);
+    const workSun = getWorkSun(name);
     if (skills.length === 0) return;
 
     if (!shiftData[pk][name]) shiftData[pk][name] = {};
@@ -1850,9 +1887,12 @@ function runAutoCreate() {
 
       // 誕生日登録済み → 自動で誕生日休暇
       if (isBirthday(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '誕'; return; }
-      // 社員：会社カレンダー休業日 → 常に休み
-      if (getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
-      if (optSunRest && (sun || hol))         { shiftData[pk][name][dk] = '休'; return; }
+      // 社員：会社カレンダー休業日 → 休み（ただし土曜=workSat・日曜祝日=workSunで出勤する場合は除く。
+      // COMPANY_HOLIDAYSには土日が丸ごと含まれているため、シフト勤務の社員（配送等）はここで除外しないと
+      // 個人設定で出勤扱いにしても常に休みへ上書きされてしまう）
+      const isWeekendOverride = (sat && workSat) || ((sun || hol) && workSun);
+      if (getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d) && !isWeekendOverride) { shiftData[pk][name][dk] = '休'; return; }
+      if ((sun || hol) && optSunRest && !workSun) { shiftData[pk][name][dk] = '休'; return; }
       if (sat && optSatRest && !workSat)       { shiftData[pk][name][dk] = '休'; return; }
       // 定休日・希望休 → 休
       if (isRegularDayOff(name, day.y, day.m, day.d))   { shiftData[pk][name][dk] = '休'; return; }
@@ -2020,6 +2060,7 @@ function renderStaffList() {
     const shiftSkls  = getShiftSkills(name);
     const wsSkls     = getWorkSkills(name);
     const workSat    = getWorkSat(name);
+    const workSun    = getWorkSun(name);
     const regOff     = getRegularDaysOff(name);   // DOW array
     const reqOff     = getRequestedDaysOff(name); // date strings
     const staffType  = getStaffType(name);
@@ -2078,6 +2119,8 @@ function renderStaffList() {
         <div class="skill-sat-row">
           <input type="checkbox" id="sat-${i}" data-type="sat" data-si="${i}" ${workSat ? 'checked' : ''}>
           <label for="sat-${i}">土曜日も出勤する</label>
+          <input type="checkbox" id="sun-${i}" data-type="sun" data-si="${i}" ${workSun ? 'checked' : ''}>
+          <label for="sun-${i}">日曜・祝日も出勤する</label>
         </div>
         <div class="skill-section-title">作業スキル（担当できる作業）</div>
         <div class="skill-chips">${wsChips}</div>
@@ -2273,12 +2316,13 @@ document.getElementById('staffListEl').addEventListener('click', e => {
 
 function ensureSkillObj(name) {
   if (!staffSkills[name]) {
-    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0 };
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0 };
   }
   if (staffSkills[name].maxConsecutive === undefined) staffSkills[name].maxConsecutive = 0;
   if (!staffSkills[name].dateConstraints) staffSkills[name].dateConstraints = [];
   if (staffSkills[name].birthMonth === undefined) staffSkills[name].birthMonth = 0;
   if (staffSkills[name].birthDay === undefined) staffSkills[name].birthDay = 0;
+  if (staffSkills[name].workSun === undefined) staffSkills[name].workSun = false;
 }
 
 function getMaxConsecutive(name)   { return staffSkills[name]?.maxConsecutive ?? 0; }
@@ -2352,8 +2396,15 @@ document.getElementById('staffListEl').addEventListener('change', e => {
   if (e.target.dataset.type === 'sat') {
     const si   = parseInt(e.target.dataset.si, 10);
     const name = staffList[si];
-    if (!staffSkills[name]) staffSkills[name] = { shifts: [], workSat: false, workSkills: [] };
+    ensureSkillObj(name);
     staffSkills[name].workSat = e.target.checked;
+    saveData();
+  }
+  if (e.target.dataset.type === 'sun') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].workSun = e.target.checked;
     saveData();
   }
   if (e.target.dataset.type === 'stafftype') {

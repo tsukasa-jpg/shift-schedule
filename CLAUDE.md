@@ -29,6 +29,7 @@ staffSkills   // { staffName: {
               //     type: "パート" | "社員",
               //     shifts: string[],              // 担当可能シフトコード（誕・有給は除外）
               //     workSat: bool,                 // 土曜出勤フラグ
+              //     workSun: bool,                  // 日曜・祝日出勤フラグ（シフト勤務の社員が対象。COMPANY_HOLIDAYSの土日一括休業を上書きする）
               //     workSkills: string[],          // 作業スキル一覧
               //     regularDaysOff: number[],      // 定休曜日（0=日〜6=土）毎週繰り返し
               //     requestedDaysOff: string[],    // 希望休（"YYYY-MM-DD"）特定日
@@ -78,9 +79,9 @@ Phase 1 → Phase 2 の2段階:
 
 1. **Phase 1**: 各スタッフのシフトスキルをローテーションで割り当て。以下の優先順位で除外・制約を適用:
    - `isBirthday()`（`birthMonth`/`birthDay` が当日と一致）→ 強制「誕」（最優先）
-   - 社員の会社カレンダー休業日 → 強制「休」
-   - `optSunRest` が ON かつ日曜・祝日 → 「休」
-   - `optSatRest` が ON かつ土曜（workSat=false の場合）→ 「休」
+   - 社員の会社カレンダー休業日 → 「休」。**ただし** 土曜=`workSat`、日曜・祝日=`workSun` が true のスタッフはこの上書きから除外される（`isWeekendOverride`）。`COMPANY_HOLIDAYS` には土日が丸ごと含まれているため、この除外がないと配送等のシフト勤務の社員が個人設定で出勤扱いにしても常に休みへ強制されてしまう
+   - `optSunRest` が ON かつ日曜・祝日（`workSun=false` の場合）→ 「休」
+   - `optSatRest` が ON かつ土曜（`workSat=false` の場合）→ 「休」
    - `isRegularDayOff` / `isRequestedDayOff` → 「休」
    - `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用しシフトを絞り込み
    - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更
@@ -108,6 +109,16 @@ Phase 1 → Phase 2 の2段階:
 - **A4横・A3横**（通常月間印刷）: `printWithPageSize(size)` でページサイズを動的注入して `window.print()`。`#biko-section` は通常の DOM 要素として `@media print` CSS で表示される。
 - **前半のみ・後半のみ・両面印刷（A4横）**: `printHalfMonth(half)` / `printBothHalves()` → `doHalfPrint()` で `#half-print-area` に前半・後半の独立テーブルを生成。`body.printing-halves` クラスで `#half-print-area` 以外を `display: none !important` にして印刷。備考欄は `halfBikoHtml()` で HTML 文字列として生成し、最後の `half-print-section` の末尾に連結して埋め込む（`#biko-section` DOM 要素は `body.printing-halves` で非表示になるため）。
 - **背景色の印刷**: セルの背景色はブラウザのデフォルト設定では印刷されない。`print-color-adjust: exact` と `-webkit-print-color-adjust: exact` を `@media print` 内のセルセレクタに付与して強制出力している。
+
+### 作業要件カバレッジの可視化
+
+`tfoot` 内に「▼ 作業スキルカバレッジ（実績 / 必要）」セクション（`WORK_SKILLS` ごとの実績/必要人数、`ws-ok`/`ws-ng` で色分け）が既にあるが、スタッフ数が多いと表の最下部までスクロールしないと見えない。そのため `#app-header` 内に `#wsCoverageBadge`（常時表示のバッジ）を追加し、`renderTable()` 内で以下を計算して即時反映する:
+
+- 期間内の全日 × `WORK_SKILLS` の組み合わせのうち `getWsReq(ws, dow) > 0` のセル数（`wsReqCells`）と、実績が必要数に満たないセル数（`wsShortfallCells`）を集計
+- `wsReqCells === 0`（作業要件が一件も設定されていない）→ バッジ非表示
+- `wsShortfallCells > 0` → 赤バッジ「⚠ 作業要件 N件未達」
+- それ以外 → 緑バッジ「✓ 作業要件 充足」
+- バッジクリックで `#wsCoverageTitleRow`（tfoot内カバレッジセクションの見出し行）まで `scrollIntoView`
 
 ### 祝日・会社休日
 
