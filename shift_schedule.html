@@ -1079,8 +1079,8 @@ function dayClass(y, m, d) {
   return '';
 }
 
-function getPeriodDays() {
-  const y1 = currentYear, m1 = currentMonth;
+/** y1年m1月16日〜翌月15日の日付リストを返す（期間の開始年月を明示的に指定） */
+function getPeriodDaysFor(y1, m1) {
   let y2 = y1, m2 = m1 + 1;
   if (m2 > 12) { m2 = 1; y2++; }
   const days = [];
@@ -1088,6 +1088,7 @@ function getPeriodDays() {
   for (let d = 1;  d <= 15;                  d++) days.push({ y: y2, m: m2, d });
   return days;
 }
+function getPeriodDays() { return getPeriodDaysFor(currentYear, currentMonth); }
 
 function getShift(staff, dayObj) {
   const pk = periodKey();
@@ -1917,10 +1918,10 @@ function runAutoCreate() {
       if (rotIdx > 0 && rotIdx % rotation.length === 0) shuffleInPlace(rotation);
     });
 
-    // 連勤制限：最大連勤日数を超えたら休みを挿入
+    // 連勤制限：最大連勤日数を超えたら休みを挿入（前期から続く連勤も通算する）
     const maxC = getMaxConsecutive(name);
     if (maxC > 0) {
-      let streak = 0;
+      let streak = getIncomingStreak(name, days[0].y, days[0].m);
       days.forEach(day => {
         const dk  = dateStr(day.y, day.m, day.d);
         const code = shiftData[pk][name][dk] || '';
@@ -2375,17 +2376,44 @@ function getWorkRequestHours(name, dk) {
   return parseHourStr(dc.end) - parseHourStr(dc.start);
 }
 
+/** y1年m1月16日開始の期間に入る直前時点で、nameが何日連続勤務中かを返す（前期以前を遡って計算）。
+    前期のデータが丸ごと出勤で埋まっている場合は、休みに当たるまでさらに前の期も遡る（最大12期＝1年分）。 */
+function getIncomingStreak(name, y1, m1) {
+  let streak = 0;
+  let py = y1, pm = m1;
+  for (let guard = 0; guard < 12; guard++) {
+    pm -= 1;
+    if (pm < 1) { pm = 12; py -= 1; }
+    const pk    = `${py}-${pad2(pm)}-16`;
+    const pdata = shiftData[pk]?.[name];
+    if (!pdata) return streak;
+    const pdays = getPeriodDaysFor(py, pm);
+    let hitRest = false;
+    for (let i = pdays.length - 1; i >= 0; i--) {
+      const dk2  = dateStr(pdays[i].y, pdays[i].m, pdays[i].d);
+      const code = pdata[dk2] || '';
+      if (code && code !== '休') streak++;
+      else { hitRest = true; break; }
+    }
+    if (hitRest) return streak;
+  }
+  return streak;
+}
+
 /** dayIdx日にnameを出勤扱いにした場合、連勤上限（maxConsecutive）を超えるかどうかを判定
-    （直前の連続勤務日数をshiftDataから遡って数える。Phase2は日付の昇順で処理するため後方チェックは不要） */
+    （直前の連続勤務日数をshiftDataから遡って数える。当期の先頭まで遡っても休みが見つからない場合は
+    前期以前の連勤（getIncomingStreak）も加算する。Phase2は日付の昇順で処理するため後方チェックは不要） */
 function wouldExceedMaxConsecutive(name, dayIdx, days, pk) {
   const maxC = getMaxConsecutive(name);
   if (maxC <= 0) return false;
   let streak = 1;
-  for (let i = dayIdx - 1; i >= 0; i--) {
+  let i;
+  for (i = dayIdx - 1; i >= 0; i--) {
     const dk2  = dateStr(days[i].y, days[i].m, days[i].d);
     const code = shiftData[pk]?.[name]?.[dk2] || '';
     if (code && code !== '休') streak++; else break;
   }
+  if (i < 0) streak += getIncomingStreak(name, days[0].y, days[0].m);
   return streak > maxC;
 }
 

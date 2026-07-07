@@ -85,9 +85,9 @@ Phase 1 → Phase 2 の2段階:
    - `optSatRest` が ON かつ土曜（`workSat=false` の場合）→ 「休」
    - `isRegularDayOff` / `isRequestedDayOff` → 「休」
    - 上記のいずれにも該当しなければ `baseSkills`（`誕`・`要` を除いたシフトスキル）をローテーションで割り当て
-   - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更
+   - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更。**前期以前から続く連勤も通算する**（`getIncomingStreak()` で前期末から遡って連勤日数を数え、当期の連勤カウントの初期値にする。前期が丸ごと出勤で埋まっている場合はさらに前の期も遡る、最大12期＝1年分）
 
-2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日・**連勤上限**は上書きしない（`wouldExceedMaxConsecutive()` でPhase2の割り当てが連勤上限を超えないか事前チェックする。Phase1末尾の連勤トリムはPhase1終了時点のデータしか見ないため、Phase2でこのチェックがないと「休みへの変更」で確保したはずの連勤制限がPhase2の穴埋めで再び上書きされてしまう）。要望勤務（`要`）が設定されている日はPhase1の時点で「休」以外になっているため、Phase2の穴埋め候補（`c === '休'`のスタッフのみ）に含まれることはない。
+2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日・**連勤上限**は上書きしない（`wouldExceedMaxConsecutive()` でPhase2の割り当てが連勤上限を超えないか事前チェックする。当期の先頭まで遡っても休みが見つからない場合は `getIncomingStreak()` で前期以前の連勤も加算する。Phase1末尾の連勤トリムはPhase1終了時点のデータしか見ないため、Phase2でこのチェックがないと「休みへの変更」で確保したはずの連勤制限がPhase2の穴埋めで再び上書きされてしまう）。要望勤務（`要`）が設定されている日はPhase1の時点で「休」以外になっているため、Phase2の穴埋め候補（`c === '休'`のスタッフのみ）に含まれることはない。
 
 **重要な制約**: `誕`（誕生日休暇）・`要`（要望勤務）はシフトスキルチップに表示しない・ローテーションから除外。`誕`は`birthMonth`/`birthDay`、`要`は`dateConstraints`（`type:'work'`）が設定されていれば自動作成時に自動セットされる（スタッフ管理画面の「要望・制約」で設定）。
 
@@ -109,7 +109,9 @@ Phase 1 → Phase 2 の2段階:
 | `buildHalfTableHTML(half)` | 印刷用テーブルHTML生成（'first'=1-15日 / 'second'=16-末日） |
 | `halfBikoHtml()` | 半月印刷用の備考欄HTML文字列を生成（`buildHalfTableHTML` の末尾に連結して使う） |
 | `doHalfPrint(html)` | `#half-print-area` に HTML を注入して `body.printing-halves` で印刷 |
-| `wouldExceedMaxConsecutive(name, dayIdx, days, pk)` | dayIdx日を出勤扱いにすると連勤上限を超えるか判定（Phase2専用、直前日から遡ってカウント） |
+| `wouldExceedMaxConsecutive(name, dayIdx, days, pk)` | dayIdx日を出勤扱いにすると連勤上限を超えるか判定（Phase2専用、直前日から遡ってカウント。当期先頭で途切れなければ前期以前も通算） |
+| `getIncomingStreak(name, y1, m1)` | y1年m1月16日開始の期間に入る時点での連続勤務日数を、前期（以前）を遡って算出 |
+| `getPeriodDaysFor(y1, m1)` | 任意の期間開始年月の日付リストを返す（`getPeriodDays()` は現在表示中の期間版） |
 | `getWorkRequest(name, dk)` | その日の要望勤務（`type:'work'`）の `dateConstraints` エントリを返す |
 | `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` | 要望勤務の表示ラベル／拘束時間数を算出 |
 | `migrateLegacyData()` | 旧データ形式（`配送`コード・旧`endBy`/`startFrom`制約）を現行形式へ変換。`loadData()`/`loadDataFromSupabase()` 共通 |
