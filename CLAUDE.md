@@ -39,7 +39,9 @@ staffSkills   // { staffName: {
               //         value?: number,  // 時 (endBy/startFrom)
               //         text?: string   // (memo)
               //       }
-              //     ]
+              //     ],
+              //     birthMonth: number,             // 誕生月（1-12、0=未設定）
+              //     birthDay: number,               // 誕生日（1-31、0=未設定）
               //   } }
 workSkillReqs // { wsName: { dow(0-6): required_count } }
 bikoNotes     // { periodKey: string }
@@ -75,6 +77,7 @@ function periodKey()      // `${currentYear}-${pad2(currentMonth)}-16`
 Phase 1 → Phase 2 の2段階:
 
 1. **Phase 1**: 各スタッフのシフトスキルをローテーションで割り当て。以下の優先順位で除外・制約を適用:
+   - `isBirthday()`（`birthMonth`/`birthDay` が当日と一致）→ 強制「誕」（最優先）
    - 社員の会社カレンダー休業日 → 強制「休」
    - `optSunRest` が ON かつ日曜・祝日 → 「休」
    - `optSatRest` が ON かつ土曜（workSat=false の場合）→ 「休」
@@ -82,9 +85,9 @@ Phase 1 → Phase 2 の2段階:
    - `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用しシフトを絞り込み
    - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更
 
-2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更（定休日・社員の会社休日は上書きしない）
+2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日は上書きしない。割り当てる際も `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用する（Phase 1 と同様、無視しないこと）。
 
-**重要な制約**: `誕`（誕生日休暇）はシフトスキルチップに表示しない・ローテーションから除外。手動入力専用。
+**重要な制約**: `誕`（誕生日休暇）はシフトスキルチップに表示しない・ローテーションから除外。`birthMonth`/`birthDay` が設定されていれば自動作成時に自動セットされる（スタッフ管理画面で設定）。それ以外の日は従来通り手動入力専用。
 
 ### 主要関数
 

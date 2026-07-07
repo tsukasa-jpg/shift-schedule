@@ -1097,6 +1097,11 @@ function isRegularDayOff(name, y, m, d) {
 function isRequestedDayOff(name, y, m, d) {
   return getRequestedDaysOff(name).includes(dateStr(y, m, d));
 }
+function getBirthMonth(name) { return staffSkills[name]?.birthMonth || 0; }
+function getBirthDay(name)   { return staffSkills[name]?.birthDay   || 0; }
+function isBirthday(name, y, m, d) {
+  return getBirthMonth(name) === m && getBirthDay(name) === d;
+}
 
 function getWsReq(ws, dow) { return workSkillReqs[ws]?.[dow] ?? 0; }
 
@@ -1843,6 +1848,8 @@ function runAutoCreate() {
       const sun = dow === 0;
       const hol = isHoliday(day.y, day.m, day.d);
 
+      // 誕生日登録済み → 自動で誕生日休暇
+      if (isBirthday(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '誕'; return; }
       // 社員：会社カレンダー休業日 → 常に休み
       if (getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
       if (optSunRest && (sun || hol))         { shiftData[pk][name][dk] = '休'; return; }
@@ -1903,18 +1910,23 @@ function runAutoCreate() {
         if (gap <= 0) return;
 
         // Find staff with this work skill who are on 休 and have shift skills
-        // 社員の会社カレンダー休業日は上書きしない
+        // 社員の会社カレンダー休業日・定休日・希望休は上書きしない
         const candidates = staffList.filter(name => {
           const c      = shiftData[pk]?.[name]?.[dk] || '';
           const sSkils = getShiftSkills(name);
           return c === '休' && getWorkSkills(name).includes(ws) && sSkils.length > 0
-            && !(getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d));
+            && !(getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d))
+            && !isRegularDayOff(name, day.y, day.m, day.d)
+            && !isRequestedDayOff(name, day.y, day.m, day.d);
         });
 
         for (const cand of candidates) {
           if (gap <= 0) break;
-          const sSkils = getShiftSkills(cand);
-          shiftData[pk][cand][dk] = sSkils[0];
+          const sSkils = getShiftSkills(cand).filter(c => c !== '誕');
+          // 日付制約（時刻フィルター）を尊重してシフトを選ぶ
+          const validShifts = getValidShiftsForDate(cand, dk, sSkils);
+          if (validShifts.length === 0) continue;
+          shiftData[pk][cand][dk] = validShifts[0];
           gap--;
         }
       });
@@ -2080,6 +2092,15 @@ function renderStaffList() {
           <div class="req-off-list" id="req-list-${i}">${reqTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
         </div>
         <div class="skill-section-title">要望・制約</div>
+        <div class="consec-row">
+          <span>誕生日:</span>
+          <input type="number" class="birth-month-input" id="birth-m-${i}" data-type="birthMonth" data-si="${i}"
+            value="${getBirthMonth(name) || ''}" min="1" max="12" placeholder="月" style="width:52px;">
+          <span>月</span>
+          <input type="number" class="birth-day-input" id="birth-d-${i}" data-type="birthDay" data-si="${i}"
+            value="${getBirthDay(name) || ''}" min="1" max="31" placeholder="日" style="width:52px;">
+          <span>日（自動作成時に自動で「誕」を設定）</span>
+        </div>
         <div class="consec-row">
           <span>最大連勤日数:</span>
           <input type="number" class="consec-input" id="consec-${i}" data-type="consec" data-si="${i}"
@@ -2252,10 +2273,12 @@ document.getElementById('staffListEl').addEventListener('click', e => {
 
 function ensureSkillObj(name) {
   if (!staffSkills[name]) {
-    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [] };
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0 };
   }
   if (staffSkills[name].maxConsecutive === undefined) staffSkills[name].maxConsecutive = 0;
   if (!staffSkills[name].dateConstraints) staffSkills[name].dateConstraints = [];
+  if (staffSkills[name].birthMonth === undefined) staffSkills[name].birthMonth = 0;
+  if (staffSkills[name].birthDay === undefined) staffSkills[name].birthDay = 0;
 }
 
 function getMaxConsecutive(name)   { return staffSkills[name]?.maxConsecutive ?? 0; }
@@ -2354,6 +2377,20 @@ document.getElementById('staffListEl').addEventListener('change', e => {
     const name = staffList[si];
     ensureSkillObj(name);
     staffSkills[name].maxConsecutive = parseInt(e.target.value, 10) || 0;
+    saveData();
+  }
+  if (e.target.dataset.type === 'birthMonth') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].birthMonth = parseInt(e.target.value, 10) || 0;
+    saveData();
+  }
+  if (e.target.dataset.type === 'birthDay') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].birthDay = parseInt(e.target.value, 10) || 0;
     saveData();
   }
   // 制約種別セレクトの切り替え: 時刻 ↔ メモ 入力欄を切り替え
