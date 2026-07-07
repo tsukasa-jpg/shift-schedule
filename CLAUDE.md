@@ -35,10 +35,10 @@ staffSkills   // { staffName: {
               //     requestedDaysOff: string[],    // 希望休（"YYYY-MM-DD"）特定日
               //     hourlyWage: number,            // 時給
               //     maxConsecutive: number,        // 最大連勤日数（0=制限なし）
-              //     dateConstraints: [             // 日付別制約
-              //       { dk: "YYYY-MM-DD", type: "endBy"|"startFrom"|"memo",
-              //         value?: number,  // 時 (endBy/startFrom)
-              //         text?: string   // (memo)
+              //     dateConstraints: [             // 日付別の要望・制約
+              //       { dk: "YYYY-MM-DD", type: "work"|"memo",
+              //         start?: "HH:MM", end?: "HH:MM",  // (work) 要望勤務の開始・終了時刻（30分単位）
+              //         text?: string                    // (memo)
               //       }
               //     ],
               //     birthMonth: number,             // 誕生月（1-12、0=未設定）
@@ -79,16 +79,26 @@ Phase 1 → Phase 2 の2段階:
 
 1. **Phase 1**: 各スタッフのシフトスキルをローテーションで割り当て。以下の優先順位で除外・制約を適用:
    - `isBirthday()`（`birthMonth`/`birthDay` が当日と一致）→ 強制「誕」（最優先）
+   - `getWorkRequest(name, dk)`（`dateConstraints` に `type: 'work'` があり日付が一致）→ 強制「要」（要望勤務）。他のすべての休みルールより優先される。他のシフトコードと違い `要` の実際の時間（開始・終了）は固定値ではなく、その日の `dateConstraints` エントリの `start`/`end` から都度算出される（`getWorkRequestLabel`/`getWorkRequestHours`）
    - 社員の会社カレンダー休業日 → 「休」。**ただし** 土曜=`workSat`、日曜・祝日=`workSun` が true のスタッフはこの上書きから除外される（`isWeekendOverride`）。`COMPANY_HOLIDAYS` には土日が丸ごと含まれているため、この除外がないと配送等のシフト勤務の社員が個人設定で出勤扱いにしても常に休みへ強制されてしまう
    - `optSunRest` が ON かつ日曜・祝日（`workSun=false` の場合）→ 「休」
    - `optSatRest` が ON かつ土曜（`workSat=false` の場合）→ 「休」
    - `isRegularDayOff` / `isRequestedDayOff` → 「休」
-   - `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用しシフトを絞り込み。**制約を満たすシフトが1件もない場合は制約に違反させず「休」にする**（以前は該当スキル全体にフォールバックして制約を無視していたバグがあった）。この「休」は `renderTable()` で `cell-dc-off`（薄紫＋「制」バッジ）として表示され、定休日（`cell-reg-off`）・希望休（`cell-req-off`）と視覚的に区別できる
+   - 上記のいずれにも該当しなければ `baseSkills`（`誕`・`要` を除いたシフトスキル）をローテーションで割り当て
    - 連勤制限（`maxConsecutive`）: Phase 1 後に連続勤務をスキャンして超過分を「休」に変更
 
-2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日・**連勤上限**は上書きしない（`wouldExceedMaxConsecutive()` でPhase2の割り当てが連勤上限を超えないか事前チェックする。Phase1末尾の連勤トリムはPhase1終了時点のデータしか見ないため、Phase2でこのチェックがないと「休みへの変更」で確保したはずの連勤制限がPhase2の穴埋めで再び上書きされてしまう）。割り当てる際も `getValidShiftsForDate()` で日付制約（endBy/startFrom）を適用する（Phase 1 と同様、無視しないこと）。
+2. **Phase 2**: 作業要件が未達の日について、休み中の該当スキル保持者を出勤に変更。定休日・希望休・社員の会社休日・**連勤上限**は上書きしない（`wouldExceedMaxConsecutive()` でPhase2の割り当てが連勤上限を超えないか事前チェックする。Phase1末尾の連勤トリムはPhase1終了時点のデータしか見ないため、Phase2でこのチェックがないと「休みへの変更」で確保したはずの連勤制限がPhase2の穴埋めで再び上書きされてしまう）。要望勤務（`要`）が設定されている日はPhase1の時点で「休」以外になっているため、Phase2の穴埋め候補（`c === '休'`のスタッフのみ）に含まれることはない。
 
-**重要な制約**: `誕`（誕生日休暇）はシフトスキルチップに表示しない・ローテーションから除外。`birthMonth`/`birthDay` が設定されていれば自動作成時に自動セットされる（スタッフ管理画面で設定）。それ以外の日は従来通り手動入力専用。
+**重要な制約**: `誕`（誕生日休暇）・`要`（要望勤務）はシフトスキルチップに表示しない・ローテーションから除外。`誕`は`birthMonth`/`birthDay`、`要`は`dateConstraints`（`type:'work'`）が設定されていれば自動作成時に自動セットされる（スタッフ管理画面の「要望・制約」で設定）。
+
+### 要望勤務（`要`）
+
+特定の日だけ通常のシフトスキルにない時間帯で働きたい、という要望をそのまま実際の勤務として自動作成に反映する仕組み。
+
+- 入力: スタッフ管理の「要望・制約」で日付＋開始時刻＋終了時刻（`<input type="time" step="1800">` で30分単位）を追加 → `dateConstraints` に `{ dk, type: 'work', start: 'HH:MM', end: 'HH:MM' }` として保存
+- `SHIFTS` 配列に `{ code: '要', label: '要望勤務', time: '-', h: 0, ... }` として登録されているが、`h`/`time` はダミー値（実際の時間は固定ではなく日付ごとに異なるため）
+- 表示ラベル・実労働時間は `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` で都度その日の `dateConstraints` から算出する（`renderTable()`・`buildHalfTableHTML()`・月間総労働時間の集計すべてで共通）。ラベルは分単位が00なら省略（例: `9-12`）、30分単位なら `9:30-12:30` のように表示
+- **旧形式からの移行**: 以前は `type: 'endBy'|'startFrom'` ＋時刻（時間単位のみ）で「既存シフトコードを絞り込むフィルター」として機能していたが、絞り込んだ結果シフトが1つも残らない場合に**制約を無視してしまうバグ**があった。現在は「フィルター」ではなく「その時間帯で直接勤務させる」方式に変更し、`migrateLegacyData()`（`loadData()`/`loadDataFromSupabase()` 共通）で旧データを自動変換する: `endBy(H)` → `09:00〜H:00`、`startFrom(H)` → `H:00〜20:00`（開店・閉店時刻は目安の仮定値）
 
 ### 主要関数
 
@@ -99,9 +109,10 @@ Phase 1 → Phase 2 の2段階:
 | `buildHalfTableHTML(half)` | 印刷用テーブルHTML生成（'first'=1-15日 / 'second'=16-末日） |
 | `halfBikoHtml()` | 半月印刷用の備考欄HTML文字列を生成（`buildHalfTableHTML` の末尾に連結して使う） |
 | `doHalfPrint(html)` | `#half-print-area` に HTML を注入して `body.printing-halves` で印刷 |
-| `getValidShiftsForDate(name, dk, skills)` | 日付制約を考慮した使用可能シフト一覧を返す |
 | `wouldExceedMaxConsecutive(name, dayIdx, days, pk)` | dayIdx日を出勤扱いにすると連勤上限を超えるか判定（Phase2専用、直前日から遡ってカウント） |
-| `getShiftHours(code)` | シフトコードの開始・終了時刻を `{start, end}` で返す |
+| `getWorkRequest(name, dk)` | その日の要望勤務（`type:'work'`）の `dateConstraints` エントリを返す |
+| `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` | 要望勤務の表示ラベル／拘束時間数を算出 |
+| `migrateLegacyData()` | 旧データ形式（`配送`コード・旧`endBy`/`startFrom`制約）を現行形式へ変換。`loadData()`/`loadDataFromSupabase()` 共通 |
 | `onAuthChange(session)` | Supabase Auth セッション変化時に UI 表示を切り替える |
 | `doLogin()` | ログインフォームの値で `signInWithPassword` を呼ぶ（async） |
 
@@ -129,7 +140,7 @@ Phase 1 → Phase 2 の2段階:
 
 ### シフト定義の変更
 
-`SHIFTS` 配列（ファイル上部）を編集する。`h` は拘束時間（実労働時間は `getPaidH(h)` で休憩控除済みに変換）。`誕`・`有給`・`休` はシフトスキルの選択対象外。
+`SHIFTS` 配列（ファイル上部）を編集する。`h` は拘束時間（実労働時間は `getPaidH(h)` で休憩控除済みに変換）。`誕`・`要`・`有給`・`休` はシフトスキルの選択対象外（`shiftChips` 生成時に `.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要')` で除外）。
 
 ```javascript
 { code: '早③', label: '早番③', time: '9:00～15:30', h: 6.5, bg: '#f4ee9c', fg: '#585800' }

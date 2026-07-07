@@ -172,13 +172,6 @@
       position: absolute; top: 1px; left: 2px; pointer-events: none;
       line-height: 1;
     }
-    /* 時刻制約により出勤できず休みになったセル（薄紫＋「制」バッジ） */
-    .cell-dc-off { background-color: #f2ecfd !important; }
-    .cell-dc-off::before {
-      content: '制'; font-size: 8px; color: #6b3fa0; font-weight: bold;
-      position: absolute; top: 1px; left: 2px; pointer-events: none;
-      line-height: 1;
-    }
 
     /* Summary / work-skill cols */
     .col-sum { background: #f4f6fa; font-size: 10px; min-width: 26px; }
@@ -380,7 +373,7 @@
       padding: 4px 5px; border: 1px solid #c0c8d4; border-radius: 4px;
       font-size: 11px; font-family: inherit; color: #333; background: #f7f9fc;
     }
-    .dc-hour-input { width: 46px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; text-align: center; }
+    .dc-time-input { width: 84px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; text-align: center; }
     .dc-memo-input { flex: 1; min-width: 80px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; }
     .dc-add-btn { padding: 4px 10px; background: #805ad5; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; white-space: nowrap; }
     .dc-add-btn:hover { background: #6b46c1; }
@@ -390,8 +383,7 @@
       background: #faf5ff; border: 1px solid #d6bcfa; border-radius: 6px;
       padding: 3px 8px; font-size: 11px; color: #553c9a;
     }
-    .dc-tag.type-end    { background: #fff5f5; border-color: #feb2b2; color: #9b2c2c; }
-    .dc-tag.type-start  { background: #f0fff4; border-color: #9ae6b4; color: #276749; }
+    .dc-tag.type-work   { background: #eaf7fb; border-color: #9ad9e8; color: #0b5566; }
     .dc-tag.type-consec { background: #fffaf0; border-color: #fbd38d; color: #744210; }
     .dc-remove { background: none; border: none; cursor: pointer; color: #888; font-size: 13px; line-height: 1; padding: 0; margin-left: 2px; }
     .dc-remove:hover { color: #c53030; }
@@ -561,14 +553,12 @@
       .shift-rest { background: #fff !important; color: #fff !important; }
       .cell-req-off { background-color: #fff !important; }
       .cell-reg-off { background-color: #fff !important; }
-      .cell-dc-off  { background-color: #fff !important; }
       .shift-cell.d-sat,
       .shift-cell.d-sun,
       .shift-cell.d-hol { background-color: #fff !important; color: #000 !important; }
       #shiftTable thead th { position: static; }
       .skill-warn::after  { display: none; }
       .cell-req-off::before { display: none; }
-      .cell-dc-off::before  { display: none; }
 
       /* 集計列・集計行は非表示 */
       #shiftTable tfoot { display: none !important; }
@@ -854,6 +844,7 @@ const SHIFTS = [
   { code: '配送③', label: '配送③', time: '3:00～12:00', h: 9,   bg: '#c8e8ff', fg: '#004090' },
   { code: '配送④', label: '配送④', time: '3:00～12:00', h: 9,   bg: '#7ab8ff', fg: '#001f60' },
   { code: '集荷',  label: '集荷',   time: '9:00～12:00',  h: 3,   bg: '#ffd6a5', fg: '#7a3500' },
+  { code: '要',   label: '要望勤務', time: '-',        h: 0,   bg: '#c9f0f7', fg: '#0b5566' },
   { code: '休',    label: '休み',   time: '-',            h: 0,   bg: '#d4d4d4', fg: '#484848' },
 ];
 const SKILL_SHIFTS = SHIFTS.slice(0, -1);
@@ -934,6 +925,30 @@ let currentUser  = null; // Supabase Auth user object (null = not logged in)
 /* =====================================================
    STORAGE
 ===================================================== */
+/** 旧データ形式を現行形式へ移行する（loadData/loadDataFromSupabase 共通） */
+function migrateLegacyData() {
+  // 旧「配送」コードを「配送①」へ移行
+  Object.values(shiftData).forEach(pd => {
+    Object.values(pd).forEach(nd => {
+      Object.keys(nd).forEach(dk => { if (nd[dk] === '配送') nd[dk] = '配送①'; });
+    });
+  });
+  Object.values(staffSkills).forEach(sk => {
+    if (sk.shifts) sk.shifts = sk.shifts.map(c => c === '配送' ? '配送①' : c);
+  });
+  // 旧「〇時まで/〇時から」制約を「要望勤務（開始〜終了時刻）」へ移行
+  // endBy(H)     → 9:00〜H:00（通常の開店時刻からHまで働く想定）
+  // startFrom(H) → H:00〜20:00（Hから通常の最終時刻まで働く想定）
+  Object.values(staffSkills).forEach(sk => {
+    if (!Array.isArray(sk.dateConstraints)) return;
+    sk.dateConstraints = sk.dateConstraints.map(dc => {
+      if (dc.type === 'endBy')     return { dk: dc.dk, type: 'work', start: '09:00', end: `${String(dc.value).padStart(2, '0')}:00` };
+      if (dc.type === 'startFrom') return { dk: dc.dk, type: 'work', start: `${String(dc.value).padStart(2, '0')}:00`, end: '20:00' };
+      return dc;
+    });
+  });
+}
+
 function loadData() {
   try {
     const d = JSON.parse(localStorage.getItem('shiftAppV4') || '{}');
@@ -943,15 +958,7 @@ function loadData() {
     workSkillReqs = typeof d.workSkillReqs  === 'object' && d.workSkillReqs ? d.workSkillReqs : defaultReqs();
     bikoNotes     = typeof d.bikoNotes      === 'object' && d.bikoNotes     ? d.bikoNotes     : {};
     paidLeaveData = typeof d.paidLeaveData  === 'object' && d.paidLeaveData ? d.paidLeaveData : {};
-    // 旧「配送」コードを「配送①」へ移行
-    Object.values(shiftData).forEach(pd => {
-      Object.values(pd).forEach(nd => {
-        Object.keys(nd).forEach(dk => { if (nd[dk] === '配送') nd[dk] = '配送①'; });
-      });
-    });
-    Object.values(staffSkills).forEach(sk => {
-      if (sk.shifts) sk.shifts = sk.shifts.map(c => c === '配送' ? '配送①' : c);
-    });
+    migrateLegacyData();
   } catch {
     staffList = defaultStaff();
     shiftData = {}; staffSkills = {};
@@ -1034,12 +1041,7 @@ async function loadDataFromSupabase() {
     if (typeof d.bikoNotes     === 'object' && d.bikoNotes)                bikoNotes     = d.bikoNotes;
     if (typeof d.paidLeaveData === 'object' && d.paidLeaveData)            paidLeaveData = d.paidLeaveData;
     // 旧データ移行を再適用
-    Object.values(shiftData).forEach(pd =>
-      Object.values(pd).forEach(nd =>
-        Object.keys(nd).forEach(dk => { if (nd[dk] === '配送') nd[dk] = '配送①'; })));
-    Object.values(staffSkills).forEach(sk => {
-      if (sk.shifts) sk.shifts = sk.shifts.map(c => c === '配送' ? '配送①' : c);
-    });
+    migrateLegacyData();
     _saveLocal();
     renderTable();
     setSyncStatus('ok');
@@ -1230,7 +1232,7 @@ function renderTable() {
       if (c && c !== '休') workDays++;
       if (c) {
         counts[c] = (counts[c] || 0) + 1;
-        totalHours += getPaidH(SHIFT_MAP[c]?.h ?? 0);
+        totalHours += getPaidH(c === '要' ? getWorkRequestHours(name, dk) : (SHIFT_MAP[c]?.h ?? 0));
       }
     });
     return { workDays, totalHours, counts };
@@ -1308,23 +1310,16 @@ function renderTable() {
       const dc    = dayClass(day.y, day.m, day.d);
       const bnd   = i > 0 && day.d === 1 ? ' month-boundary' : '';
 
-      const mismatch = code && code !== '休' && code !== '有給' && shiftSkls.length > 0 && !shiftSkls.includes(code);
+      const mismatch = code && code !== '休' && code !== '有給' && code !== '要' && shiftSkls.length > 0 && !shiftSkls.includes(code);
       const warnCls  = mismatch ? ' skill-warn' : '';
       const cellStyle = shift ? `background:${shift.bg};color:${shift.fg};` : '';
       const cellDcCls = shift ? '' : dc;
 
-      // 時刻制約を満たすシフトが1つもないために休みになったセルか判定
-      const dcForDay  = getDateConstraints(name).find(c => c.dk === dk && c.type !== 'memo');
-      const dcConflict = code === '休' && !!dcForDay
-        && getValidShiftsForDate(name, dk, shiftSkls.filter(c => c !== '誕')).length === 0;
-
-      // 定休日・希望休インジケーター（セルが空のときのみ）／時刻制約インジケーター（休みのときのみ）
+      // 定休日・希望休インジケーター（セルが空のときのみ）
       let offCls = '';
       if (!code) {
         if (isRegularDayOff(name, day.y, day.m, day.d))   offCls = ' cell-reg-off';
         else if (isRequestedDayOff(name, day.y, day.m, day.d)) offCls = ' cell-req-off';
-      } else if (dcConflict) {
-        offCls = ' cell-dc-off';
       }
 
       // tooltip
@@ -1333,14 +1328,11 @@ function renderTable() {
       const tipParts = [];
       if (regOff) tipParts.push('定休日');
       if (reqOff) tipParts.push('希望休');
-      if (dcConflict) {
-        const dcLabel = dcForDay.type === 'endBy' ? `${dcForDay.value}時まで` : `${dcForDay.value}時から`;
-        tipParts.push(`時刻制約（${dcLabel}）を満たすシフトがないため休み`);
-      }
+      if (code === '要') tipParts.push(`要望勤務（${getWorkRequestLabel(name, dk)}）`);
       const tipAttr = tipParts.length ? ` title="${tipParts.join(' / ')}"` : '';
 
       const restCls = code === '休' ? ' shift-rest' : '';
-      const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
+      const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : code === '要' ? esc(getWorkRequestLabel(name, dk)) : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
       html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${bnd}"` +
               ` data-si="${idx}" data-di="${i}"` +
               ` style="${cellStyle}"${tipAttr}>${cellContent}</td>`;
@@ -1633,7 +1625,7 @@ function buildHalfTableHTML(half) {
       const style = s ? `background:${s.bg};color:${s.fg};font-weight:bold;` : '';
       const dcCls = s ? '' : dc;
       const restCls = code === '休' ? ' shift-rest' : '';
-      const content = (!code || code === '休') ? '' : esc(code);
+      const content = (!code || code === '休') ? '' : code === '要' ? esc(getWorkRequestLabel(name, dk)) : esc(code);
       html += `<td class="${dcCls}${restCls}" style="${style}">${content}</td>`;
     });
     html += `</tr>`;
@@ -1892,7 +1884,7 @@ function runAutoCreate() {
 
     if (!shiftData[pk][name]) shiftData[pk][name] = {};
 
-    const baseSkills = skills.filter(c => c !== '誕');
+    const baseSkills = skills.filter(c => c !== '誕' && c !== '要');
     const rotation = shuffle([...baseSkills]);
     let rotIdx = 0;
 
@@ -1907,6 +1899,8 @@ function runAutoCreate() {
 
       // 誕生日登録済み → 自動で誕生日休暇
       if (isBirthday(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '誕'; return; }
+      // 要望勤務（開始〜終了時刻を指定した出勤依頼）→ 他の休みルールより優先して出勤扱いにする
+      if (getWorkRequest(name, dk)) { shiftData[pk][name][dk] = '要'; return; }
       // 社員：会社カレンダー休業日 → 休み（ただし土曜=workSat・日曜祝日=workSunで出勤する場合は除く。
       // COMPANY_HOLIDAYSには土日が丸ごと含まれているため、シフト勤務の社員（配送等）はここで除外しないと
       // 個人設定で出勤扱いにしても常に休みへ上書きされてしまう）
@@ -1918,10 +1912,7 @@ function runAutoCreate() {
       if (isRegularDayOff(name, day.y, day.m, day.d))   { shiftData[pk][name][dk] = '休'; return; }
       if (isRequestedDayOff(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
 
-      // 日付制約（時刻フィルター）：制約を満たすシフトが1つもない日は、制約に違反させず「休」にする
-      const validShifts = getValidShiftsForDate(name, dk, baseSkills);
-      if (validShifts.length === 0) { shiftData[pk][name][dk] = '休'; return; }
-      shiftData[pk][name][dk] = validShifts[rotIdx % validShifts.length];
+      shiftData[pk][name][dk] = baseSkills[rotIdx % baseSkills.length];
       rotIdx++;
       if (rotIdx > 0 && rotIdx % rotation.length === 0) shuffleInPlace(rotation);
     });
@@ -1983,11 +1974,9 @@ function runAutoCreate() {
 
         for (const cand of candidates) {
           if (gap <= 0) break;
-          const sSkils = getShiftSkills(cand).filter(c => c !== '誕');
-          // 日付制約（時刻フィルター）を尊重してシフトを選ぶ
-          const validShifts = getValidShiftsForDate(cand, dk, sSkils);
-          if (validShifts.length === 0) continue;
-          shiftData[pk][cand][dk] = validShifts[0];
+          const sSkils = getShiftSkills(cand).filter(c => c !== '誕' && c !== '要');
+          if (sSkils.length === 0) continue;
+          shiftData[pk][cand][dk] = sSkils[0];
           gap--;
         }
       });
@@ -2086,7 +2075,7 @@ function renderStaffList() {
     const reqOff     = getRequestedDaysOff(name); // date strings
     const staffType  = getStaffType(name);
 
-    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕').map(s =>
+    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要').map(s =>
       `<span class="skill-chip${shiftSkls.includes(s.code) ? ' active' : ''}"
              style="background:${s.bg};color:${s.fg};"
              data-type="shift" data-si="${i}" data-code="${esc(s.code)}">${esc(s.code)}</span>`
@@ -2175,11 +2164,14 @@ function renderStaffList() {
           <div class="dc-add-row">
             <input type="date" class="req-off-date-input" id="dc-date-${i}" data-si="${i}">
             <select class="dc-type-sel" id="dc-type-${i}">
-              <option value="endBy">〇時まで</option>
-              <option value="startFrom">〇時から</option>
+              <option value="work">要望勤務</option>
               <option value="memo">メモ</option>
             </select>
-            <span id="dc-hour-wrap-${i}"><input type="number" class="dc-hour-input" id="dc-hour-${i}" min="0" max="23" placeholder="時"> 時</span>
+            <span id="dc-work-wrap-${i}">
+              <input type="time" class="dc-time-input" id="dc-start-${i}" step="1800">
+              〜
+              <input type="time" class="dc-time-input" id="dc-end-${i}" step="1800">
+            </span>
             <input type="text" class="dc-memo-input" id="dc-memo-${i}" placeholder="内容" style="display:none;">
             <button class="dc-add-btn" data-action="addDc" data-si="${i}">追加</button>
           </div>
@@ -2260,14 +2252,18 @@ document.getElementById('staffListEl').addEventListener('click', e => {
         if (!text) return;
         staffSkills[name].dateConstraints.push({ dk, type: 'memo', text });
       } else {
-        const val = parseInt(document.getElementById(`dc-hour-${si}`)?.value, 10);
-        if (isNaN(val) || val < 0 || val > 23) return;
-        staffSkills[name].dateConstraints.push({ dk, type, value: val });
+        const start = document.getElementById(`dc-start-${si}`)?.value;
+        const end   = document.getElementById(`dc-end-${si}`)?.value;
+        if (!start || !end || start >= end) return;
+        staffSkills[name].dateConstraints.push({ dk, type: 'work', start, end });
       }
       staffSkills[name].dateConstraints.sort((a, b) => a.dk.localeCompare(b.dk));
       saveData();
       refreshDcList(si, name);
       document.getElementById(`dc-date-${si}`).value = '';
+      document.getElementById(`dc-start-${si}`).value = '';
+      document.getElementById(`dc-end-${si}`).value = '';
+      document.getElementById(`dc-memo-${si}`).value = '';
       return;
     }
 
@@ -2356,25 +2352,27 @@ function parseHourStr(s) {
   return h + (m || 0) / 60;
 }
 
-/** シフトコードの開始・終了時刻を返す {start, end} (null if '-') */
-function getShiftHours(code) {
-  const s = SHIFT_MAP[code];
-  if (!s || s.time === '-') return null;
-  const [startStr, endStr] = s.time.split('～');
-  return { start: parseHourStr(startStr), end: parseHourStr(endStr) };
+/** 指定日の要望勤務（type: 'work'）の日付制約を返す（なければundefined） */
+function getWorkRequest(name, dk) {
+  return getDateConstraints(name).find(c => c.dk === dk && c.type === 'work');
 }
 
-/** 日付制約を考慮して使用可能なシフトコード一覧を返す */
-function getValidShiftsForDate(name, dk, skills) {
-  const dc = getDateConstraints(name).find(c => c.dk === dk);
-  if (!dc || dc.type === 'memo') return skills;
-  return skills.filter(code => {
-    const h = getShiftHours(code);
-    if (!h) return true;
-    if (dc.type === 'endBy'    && h.end   > dc.value) return false;
-    if (dc.type === 'startFrom' && h.start < dc.value) return false;
-    return true;
-  });
+/** 要望勤務セルの表示ラベル（例: "9-12", "9:30-18"）を返す */
+function getWorkRequestLabel(name, dk) {
+  const dc = getWorkRequest(name, dk);
+  if (!dc) return '要';
+  const fmt = t => {
+    const [h, m] = t.split(':').map(Number);
+    return m ? `${h}:${String(m).padStart(2, '0')}` : String(h);
+  };
+  return `${fmt(dc.start)}-${fmt(dc.end)}`;
+}
+
+/** 要望勤務の拘束時間数（休憩控除前）を返す */
+function getWorkRequestHours(name, dk) {
+  const dc = getWorkRequest(name, dk);
+  if (!dc) return 0;
+  return parseHourStr(dc.end) - parseHourStr(dc.start);
 }
 
 /** dayIdx日にnameを出勤扱いにした場合、連勤上限（maxConsecutive）を超えるかどうかを判定
@@ -2397,9 +2395,8 @@ function buildDcTags(name, i) {
   return list.map((dc, ci) => {
     const [,m2,d2] = dc.dk.split('-').map(Number);
     let label, cls;
-    if (dc.type === 'endBy')     { label = `${m2}/${d2} ${dc.value}時まで`;  cls = 'type-end'; }
-    else if (dc.type === 'startFrom') { label = `${m2}/${d2} ${dc.value}時から`; cls = 'type-start'; }
-    else                         { label = `${m2}/${d2} ${dc.text}`;          cls = ''; }
+    if (dc.type === 'work') { label = `${m2}/${d2} ${dc.start}〜${dc.end}`; cls = 'type-work'; }
+    else                    { label = `${m2}/${d2} ${dc.text}`;             cls = ''; }
     return `<span class="dc-tag ${cls}">${label}<button class="dc-remove" data-action="removeDc" data-si="${i}" data-ci="${ci}" title="削除">×</button></span>`;
   }).join('');
 }
@@ -2479,13 +2476,13 @@ document.getElementById('staffListEl').addEventListener('change', e => {
     staffSkills[name].birthDay = parseInt(e.target.value, 10) || 0;
     saveData();
   }
-  // 制約種別セレクトの切り替え: 時刻 ↔ メモ 入力欄を切り替え
+  // 制約種別セレクトの切り替え: 要望勤務（開始〜終了時刻） ↔ メモ 入力欄を切り替え
   if (e.target.classList.contains('dc-type-sel')) {
     const si = parseInt(e.target.id.replace('dc-type-', ''), 10);
     const isMemo = e.target.value === 'memo';
-    const hourWrap = document.getElementById(`dc-hour-wrap-${si}`);
+    const workWrap = document.getElementById(`dc-work-wrap-${si}`);
     const memoInp  = document.getElementById(`dc-memo-${si}`);
-    if (hourWrap) hourWrap.style.display = isMemo ? 'none' : '';
+    if (workWrap) workWrap.style.display = isMemo ? 'none' : '';
     if (memoInp)  memoInp.style.display  = isMemo ? '' : 'none';
   }
 });
