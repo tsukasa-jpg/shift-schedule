@@ -27,12 +27,13 @@ staffList     // string[]  スタッフ名一覧（表示順）
 shiftData     // { periodKey: { staffName: { "YYYY-MM-DD": shiftCode } } }
 staffSkills   // { staffName: {
               //     type: "パート" | "社員",
-              //     shifts: string[],              // 担当可能シフトコード（誕・有給は除外）
+              //     shifts: string[],              // 担当可能シフトコード（誕・有給・要は除外）
               //     workSat: bool,                 // 土曜出勤フラグ
               //     workSun: bool,                  // 日曜・祝日出勤フラグ（シフト勤務の社員が対象。COMPANY_HOLIDAYSの土日一括休業を上書きする）
               //     workSkills: string[],          // 作業スキル一覧
               //     regularDaysOff: number[],      // 定休曜日（0=日〜6=土）毎週繰り返し
               //     requestedDaysOff: string[],    // 希望休（"YYYY-MM-DD"）特定日
+              //     fixedShifts: { [dow]: code },  // 曜日別 固定シフト（0=日〜6=土 → シフトコード）自動作成で優先割当
               //     hourlyWage: number,            // 時給
               //     maxConsecutive: number,        // 最大連勤日数（0=制限なし）
               //     dateConstraints: [             // 日付別の要望・制約
@@ -49,7 +50,7 @@ bikoNotes     // { periodKey: string }
 paidLeaveData // { staffName: { "YYYY": { granted: N } } }  YYYY = 年度開始年
 ```
 
-作業スキル一覧（`WORK_SKILLS`定数）: `['調整作業', 'プライス貼り', 'EC', '西友', '配送', '営業', '総務経理']`
+作業スキル一覧（`WORK_SKILLS`定数）: `['調整作業', 'プライス貼り', 'EC', '野菜BOX', '西友', '配送', '積み込み', '営業', '総務経理']`（各スキルの色・略記は `WS_STYLE` で定義。`WORK_SKILLS` に追加すればスタッフ管理のスキルチップ・作業要件設定ダイアログの両方へ自動反映される。`積み込み`＝トラック荷積み担当、`野菜BOX`＝野菜BOXピッキング）
 
 ### 期間の仕組み（重要）
 
@@ -81,6 +82,8 @@ Phase 1 → Phase 2 の2段階:
    - `isBirthday()`（`birthMonth`/`birthDay` が当日と一致）→ 強制「誕」（最優先）
    - `getWorkRequest(name, dk)`（`dateConstraints` に `type: 'work'` があり日付が一致）→ 強制「要」（要望勤務）。他のすべての休みルールより優先される。他のシフトコードと違い `要` の実際の時間（開始・終了）は固定値ではなく、その日の `dateConstraints` エントリの `start`/`end` から都度算出される（`getWorkRequestLabel`/`getWorkRequestHours`）
    - 社員の会社カレンダー休業日 → 「休」。**ただし** 土曜=`workSat`、日曜・祝日=`workSun` が true のスタッフはこの上書きから除外される（`isWeekendOverride`）。`COMPANY_HOLIDAYS` には土日が丸ごと含まれているため、この除外がないと配送等のシフト勤務の社員が個人設定で出勤扱いにしても常に休みへ強制されてしまう
+   - `isRequestedDayOff`（特定日の希望休）→ 「休」。**固定シフトより優先**（下記より前に評価）
+   - `getFixedShiftForDate(name, y, m, d)`（`fixedShifts` にその曜日のエントリがある）→ その固定シフトコードを割当。**土日休オプション・定休日・ローテーションより優先**。ただし上の「誕生日・要望勤務・社員の会社休業日・希望休」には負ける
    - `optSunRest` が ON かつ日曜・祝日（`workSun=false` の場合）→ 「休」
    - `optSatRest` が ON かつ土曜（`workSat=false` の場合）→ 「休」
    - `isRegularDayOff` / `isRequestedDayOff` → 「休」
@@ -112,6 +115,7 @@ Phase 1 → Phase 2 の2段階:
 | `wouldExceedMaxConsecutive(name, dayIdx, days, pk)` | dayIdx日を出勤扱いにすると連勤上限を超えるか判定（Phase2専用、直前日から遡ってカウント。当期先頭で途切れなければ前期以前も通算） |
 | `getIncomingStreak(name, y1, m1)` | y1年m1月16日開始の期間に入る時点での連続勤務日数を、前期（以前）を遡って算出 |
 | `getPeriodDaysFor(y1, m1)` | 任意の期間開始年月の日付リストを返す（`getPeriodDays()` は現在表示中の期間版） |
+| `getFixedShiftForDate(name, y, m, d)` | その曜日に `fixedShifts` の固定シフトが設定されていればそのコードを返す（なければ null）。スタッフ管理の「固定シフト」欄で曜日ごとに設定 |
 | `getWorkRequest(name, dk)` | その日の要望勤務（`type:'work'`）の `dateConstraints` エントリを返す |
 | `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` | 要望勤務の表示ラベル／拘束時間数を算出 |
 | `migrateLegacyData()` | 旧データ形式（`配送`コード・旧`endBy`/`startFrom`制約）を現行形式へ変換。`loadData()`/`loadDataFromSupabase()` 共通 |
