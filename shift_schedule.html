@@ -338,6 +338,18 @@
     .dow-chip.active.sat   { background: #bee3f8; border-color: #3182ce; color: #1a4a80; }
     .dow-chip.active.sun   { background: #fed7d7; border-color: #e53e3e; color: #9b2c2c; }
 
+    /* 固定シフト（曜日別） */
+    .fixed-shift-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fixed-shift-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .fixed-shift-cell .fs-dow { font-size: 11px; font-weight: bold; color: #718096; }
+    .fixed-shift-cell.sat .fs-dow { color: #3182ce; }
+    .fixed-shift-cell.sun .fs-dow { color: #e53e3e; }
+    .fixed-shift-sel {
+      width: 52px; padding: 2px 2px; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 11px; background: #fff; color: #2d3748; text-align: center;
+    }
+    .fixed-shift-sel.set { border-color: #38a169; background: #f0fff4; font-weight: bold; }
+
     /* 希望休 */
     .req-off-section { margin-top: 2px; }
     .skill-wage-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; }
@@ -1112,6 +1124,12 @@ function getRegularDaysOff(name)   { return staffSkills[name]?.regularDaysOff ??
 function getRequestedDaysOff(name) { return staffSkills[name]?.requestedDaysOff ?? []; } // array of 'YYYY-MM-DD'
 function getStaffType(name)        { return staffSkills[name]?.type           ?? 'パート'; } // 'パート' | '社員'
 function hasShiftSkill(name, code) { return getShiftSkills(name).includes(code); }
+
+function getFixedShifts(name)      { return staffSkills[name]?.fixedShifts    ?? {}; }   // { dow(0-6): shiftCode }
+function getFixedShiftForDate(name, y, m, d) {
+  const code = getFixedShifts(name)[dayOfWeek(y, m, d)];
+  return code || null;
+}
 
 function isRegularDayOff(name, y, m, d) {
   return getRegularDaysOff(name).includes(dayOfWeek(y, m, d));
@@ -1907,6 +1925,11 @@ function runAutoCreate() {
       // 個人設定で出勤扱いにしても常に休みへ上書きされてしまう）
       const isWeekendOverride = (sat && workSat) || ((sun || hol) && workSun);
       if (getStaffType(name) === '社員' && isCompanyHoliday(day.y, day.m, day.d) && !isWeekendOverride) { shiftData[pk][name][dk] = '休'; return; }
+      // 希望休（特定日）は固定シフトより優先
+      if (isRequestedDayOff(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '休'; return; }
+      // 曜日別 固定シフト → 自動休（土日）・定休日・ローテーションより優先して割り当て
+      const fixedCode = getFixedShiftForDate(name, day.y, day.m, day.d);
+      if (fixedCode) { shiftData[pk][name][dk] = fixedCode; return; }
       if ((sun || hol) && optSunRest && !workSun) { shiftData[pk][name][dk] = '休'; return; }
       if (sat && optSatRest && !workSat)       { shiftData[pk][name][dk] = '休'; return; }
       // 定休日・希望休 → 休
@@ -2101,6 +2124,22 @@ function renderStaffList() {
       return `<span class="dow-chip${satCls}${active}" data-type="regoff" data-si="${i}" data-dow="${dow}">${label}</span>`;
     }).join('');
 
+    // 固定シフト: 曜日ごとに固定のシフトを割り当て（自動作成時に優先適用）
+    const fixedShifts = getFixedShifts(name);
+    const fsShiftOpts = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要');
+    const fixedShiftCells = DOW_ORDER.map((dow, di) => {
+      const label = DOW_NAMES[di];
+      const cls   = dow === 6 ? ' sat' : dow === 0 ? ' sun' : '';
+      const cur   = fixedShifts[dow] || '';
+      const opts  = ['<option value="">－</option>'].concat(
+        fsShiftOpts.map(s => `<option value="${esc(s.code)}"${cur === s.code ? ' selected' : ''}>${esc(s.code)}</option>`)
+      ).join('');
+      return `<div class="fixed-shift-cell${cls}">
+        <span class="fs-dow">${label}</span>
+        <select class="fixed-shift-sel${cur ? ' set' : ''}" data-type="fixedshift" data-si="${i}" data-dow="${dow}">${opts}</select>
+      </div>`;
+    }).join('');
+
     // 希望休タグ一覧
     const reqTags = reqOff.slice().sort().map(dk => {
       const [y2,m2,d2] = dk.split('-').map(Number);
@@ -2137,6 +2176,8 @@ function renderStaffList() {
         <div class="skill-chips">${wsChips}</div>
         <div class="skill-section-title">定休日（毎週休む曜日）</div>
         <div class="skill-chips">${dowChips}</div>
+        <div class="skill-section-title">固定シフト（曜日ごとに固定・自動作成で優先）</div>
+        <div class="fixed-shift-grid">${fixedShiftCells}</div>
         <div class="skill-section-title">希望休（特定の日付）</div>
         <div class="req-off-section">
           <div class="req-off-add-row">
@@ -2334,13 +2375,14 @@ document.getElementById('staffListEl').addEventListener('click', e => {
 
 function ensureSkillObj(name) {
   if (!staffSkills[name]) {
-    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0 };
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0, fixedShifts: {} };
   }
   if (staffSkills[name].maxConsecutive === undefined) staffSkills[name].maxConsecutive = 0;
   if (!staffSkills[name].dateConstraints) staffSkills[name].dateConstraints = [];
   if (staffSkills[name].birthMonth === undefined) staffSkills[name].birthMonth = 0;
   if (staffSkills[name].birthDay === undefined) staffSkills[name].birthDay = 0;
   if (staffSkills[name].workSun === undefined) staffSkills[name].workSun = false;
+  if (!staffSkills[name].fixedShifts) staffSkills[name].fixedShifts = {};
 }
 
 function getMaxConsecutive(name)   { return staffSkills[name]?.maxConsecutive ?? 0; }
@@ -2488,6 +2530,17 @@ document.getElementById('staffListEl').addEventListener('change', e => {
     const name = staffList[si];
     ensureSkillObj(name);
     staffSkills[name].maxConsecutive = parseInt(e.target.value, 10) || 0;
+    saveData();
+  }
+  if (e.target.dataset.type === 'fixedshift') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const dow  = parseInt(e.target.dataset.dow, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    const code = e.target.value;
+    if (code) staffSkills[name].fixedShifts[dow] = code;
+    else      delete staffSkills[name].fixedShifts[dow];
+    e.target.classList.toggle('set', !!code);
     saveData();
   }
   if (e.target.dataset.type === 'birthMonth') {
