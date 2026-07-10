@@ -873,13 +873,15 @@ function getBreakH(rawH) {
 function getPaidH(rawH) { return rawH - getBreakH(rawH); }
 
 // 作業スキル
-const WORK_SKILLS = ['調整作業', 'プライス貼り', 'EC', '西友', '配送', '営業', '総務経理'];
+const WORK_SKILLS = ['調整作業', 'プライス貼り', 'EC', '野菜BOX', '西友', '配送', '積み込み', '営業', '総務経理'];
 const WS_STYLE = {
   '調整作業':    { bg: '#fde8c8', fg: '#7a3000', abbr: '調' },
   'プライス貼り': { bg: '#f9d6f5', fg: '#6a0060', abbr: 'プ' },
   'EC':          { bg: '#d1fae5', fg: '#065f46', abbr: 'EC' },
+  '野菜BOX':     { bg: '#c7ef8f', fg: '#3d5300', abbr: '野' },
   '西友':        { bg: '#dbeafe', fg: '#1e3a8a', abbr: '西' },
   '配送':        { bg: '#b3d9ff', fg: '#003580', abbr: '配' },
+  '積み込み':    { bg: '#cbd5e1', fg: '#1f2d3d', abbr: '積' },
   '営業':        { bg: '#fde68a', fg: '#78350f', abbr: '営' },
   '総務経理':    { bg: '#e9d5ff', fg: '#5b21b6', abbr: '総' },
 };
