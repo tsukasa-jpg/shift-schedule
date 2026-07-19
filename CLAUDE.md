@@ -18,7 +18,7 @@ git push origin main
 
 ## アーキテクチャ概要
 
-**単一ファイル構成**：`shift_schedule.html` 1ファイルに HTML／CSS／JavaScript が全て含まれる。サーバー不要でブラウザのみで動作。ビルド手順なし。
+**単一ファイル構成**：`shift_schedule.html` 1ファイルに HTML／CSS／JavaScript が全て含まれる。サーバー不要でブラウザのみで動作。ビルド・lint・テストの仕組みは無い（ファイルを直接編集してブラウザで開く／デプロイして確認する）。
 
 ### データ構造（グローバル変数）
 
@@ -34,6 +34,7 @@ staffSkills   // { staffName: {
               //     regularDaysOff: number[],      // 定休曜日（0=日〜6=土）毎週繰り返し
               //     requestedDaysOff: string[],    // 希望休（"YYYY-MM-DD"）特定日
               //     fixedShifts: { [dow]: code },  // 曜日別 固定シフト（0=日〜6=土 → シフトコード）自動作成で優先割当
+              //     paidLeaveDays: string[],       // 有給休暇（"YYYY-MM-DD"）特定日。自動作成時に自動で「有給」を設定
               //     hourlyWage: number,            // 時給
               //     maxConsecutive: number,        // 最大連勤日数（0=制限なし）
               //     dateConstraints: [             // 日付別の要望・制約
@@ -49,6 +50,8 @@ workSkillReqs // { wsName: { dow(0-6): required_count } }
 bikoNotes     // { periodKey: string }
 paidLeaveData // { staffName: { "YYYY": { granted: N } } }  YYYY = 年度開始年
 ```
+
+**紛らわしい名前に注意**: `staffSkills[name].paidLeaveDays`（特定日を有給にする指定・スタッフ管理画面）と `paidLeaveData`（年度ごとの有給付与日数・有給管理ダイアログ）は別物。前者は自動作成が読む入力、後者は手動入力される年間の付与数（`getPaidLeaveUsed()` 等の集計は `shiftData` 上の実際の `有給` コード数を数える）。
 
 作業スキル一覧（`WORK_SKILLS`定数）: `['調整作業', 'プライス貼り', 'EC', '野菜BOX', '西友', '配送', '積み込み', '営業', '総務経理']`（各スキルの色・略記は `WS_STYLE` で定義。`WORK_SKILLS` に追加すればスタッフ管理のスキルチップ・作業要件設定ダイアログの両方へ自動反映される。`積み込み`＝トラック荷積み担当、`野菜BOX`＝野菜BOXピッキング）
 
@@ -80,6 +83,7 @@ Phase 1 → Phase 2 の2段階:
 
 1. **Phase 1**: 各スタッフのシフトスキルをローテーションで割り当て。以下の優先順位で除外・制約を適用:
    - `isBirthday()`（`birthMonth`/`birthDay` が当日と一致）→ 強制「誕」（最優先）
+   - `isPaidLeaveDay(name, y, m, d)`（`paidLeaveDays` に日付が一致）→ 強制「有給」。スタッフ管理画面の「有給休暇（特定の日付）」で登録した日を自動で有給扱いにする（`希望休`と同じ日付リスト形式のUIパターン）
    - `getWorkRequest(name, dk)`（`dateConstraints` に `type: 'work'` があり日付が一致）→ 強制「要」（要望勤務）。他のすべての休みルールより優先される。他のシフトコードと違い `要` の実際の時間（開始・終了）は固定値ではなく、その日の `dateConstraints` エントリの `start`/`end` から都度算出される（`getWorkRequestLabel`/`getWorkRequestHours`）
    - 社員の会社カレンダー休業日 → 「休」。**ただし** 土曜=`workSat`、日曜・祝日=`workSun` が true のスタッフはこの上書きから除外される（`isWeekendOverride`）。`COMPANY_HOLIDAYS` には土日が丸ごと含まれているため、この除外がないと配送等のシフト勤務の社員が個人設定で出勤扱いにしても常に休みへ強制されてしまう
    - `isRequestedDayOff`（特定日の希望休）→ 「休」。**固定シフトより優先**（下記より前に評価）
@@ -137,6 +141,15 @@ Phase 1 → Phase 2 の2段階:
 - `wsShortfallCells > 0` → 赤バッジ「⚠ 作業要件 N件未達」
 - それ以外 → 緑バッジ「✓ 作業要件 充足」
 - バッジクリックで `#wsCoverageTitleRow`（tfoot内カバレッジセクションの見出し行）まで `scrollIntoView`
+
+### 有給管理・年間休日集計（`openPaidLeaveDialog()`）
+
+「年度」は **4月始まり〜翌3月終わり** （`currentFiscalYear()` は `currentMonth >= 4 ? currentYear : currentYear - 1` で推定）。`getFiscalPeriodKeys(fy)` が年度に対応する12個の期間キー（`fy-04-16`〜`fy+1-03-16`）を返し、以下の集計関数はすべてこの12期間の `shiftData` をスキャンして算出する（保存された値ではなく都度計算）:
+
+- `getPaidLeaveGranted(name, fy)`: `paidLeaveData` に保存された付与日数（唯一の保存値。手動入力）
+- `getPaidLeaveUsed(name, fy)`: シフトコードが `有給` の日数
+- `getAnnualWorkCount(name, fy)`: `休`・`誕`・`有給` 以外の出勤日数
+- `getAnnualHolidayCount(name, fy)`: `休`＋`誕`＋`有給` の合計
 
 ### 祝日・会社休日
 

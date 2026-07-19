@@ -377,6 +377,21 @@
     }
     .req-off-remove:hover { color: #c53030; }
 
+    /* 有給休暇（特定の日付） */
+    .yukyu-day-section { margin-top: 2px; }
+    .yukyu-day-add-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .yukyu-day-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    .yukyu-day-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #f3e8fd; border: 1px solid #6b21a8; border-radius: 12px;
+      padding: 2px 8px 2px 10px; font-size: 11px; color: #6b21a8;
+    }
+    .yukyu-day-remove {
+      background: none; border: none; cursor: pointer;
+      color: #6b21a8; font-size: 13px; line-height: 1; padding: 0;
+    }
+    .yukyu-day-remove:hover { color: #c53030; }
+
     /* ===== 要望・制約 ===== */
     .consec-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: #333; }
     .consec-input { width: 52px; padding: 3px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; text-align: center; }
@@ -1124,6 +1139,7 @@ function getWorkSat(name)          { return staffSkills[name]?.workSat        ??
 function getWorkSun(name)          { return staffSkills[name]?.workSun        ?? false; }
 function getRegularDaysOff(name)   { return staffSkills[name]?.regularDaysOff ?? []; }   // array of DOW (0-6)
 function getRequestedDaysOff(name) { return staffSkills[name]?.requestedDaysOff ?? []; } // array of 'YYYY-MM-DD'
+function getPaidLeaveDays(name)    { return staffSkills[name]?.paidLeaveDays ?? []; }     // array of 'YYYY-MM-DD'
 function getStaffType(name)        { return staffSkills[name]?.type           ?? 'パート'; } // 'パート' | '社員'
 function hasShiftSkill(name, code) { return getShiftSkills(name).includes(code); }
 
@@ -1138,6 +1154,9 @@ function isRegularDayOff(name, y, m, d) {
 }
 function isRequestedDayOff(name, y, m, d) {
   return getRequestedDaysOff(name).includes(dateStr(y, m, d));
+}
+function isPaidLeaveDay(name, y, m, d) {
+  return getPaidLeaveDays(name).includes(dateStr(y, m, d));
 }
 function getBirthMonth(name) { return staffSkills[name]?.birthMonth || 0; }
 function getBirthDay(name)   { return staffSkills[name]?.birthDay   || 0; }
@@ -1920,6 +1939,8 @@ function runAutoCreate() {
 
       // 誕生日登録済み → 自動で誕生日休暇
       if (isBirthday(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '誕'; return; }
+      // 有給休暇（特定の日付指定）→ 自動で有給扱いにする
+      if (isPaidLeaveDay(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '有給'; return; }
       // 要望勤務（開始〜終了時刻を指定した出勤依頼）→ 他の休みルールより優先して出勤扱いにする
       if (getWorkRequest(name, dk)) { shiftData[pk][name][dk] = '要'; return; }
       // 社員：会社カレンダー休業日 → 休み（ただし土曜=workSat・日曜祝日=workSunで出勤する場合は除く。
@@ -2099,6 +2120,7 @@ function renderStaffList() {
     const workSun    = getWorkSun(name);
     const regOff     = getRegularDaysOff(name);   // DOW array
     const reqOff     = getRequestedDaysOff(name); // date strings
+    const plDays     = getPaidLeaveDays(name);    // date strings
     const staffType  = getStaffType(name);
 
     const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要').map(s =>
@@ -2152,6 +2174,16 @@ function renderStaffList() {
       </span>`;
     }).join('');
 
+    // 有給休暇タグ一覧
+    const plTags = plDays.slice().sort().map(dk => {
+      const [y2,m2,d2] = dk.split('-').map(Number);
+      const label = `${m2}/${d2}`;
+      return `<span class="yukyu-day-tag">
+        ${label}
+        <button class="yukyu-day-remove" data-action="removePaidLeaveDay" data-si="${i}" data-dk="${esc(dk)}" title="削除">×</button>
+      </span>`;
+    }).join('');
+
     return `<div class="staff-item" data-idx="${i}">
       <div class="staff-item-header">
         <span class="si-index">${i+1}</span>
@@ -2187,6 +2219,14 @@ function renderStaffList() {
             <button class="req-off-add-btn" data-action="addReqOff" data-si="${i}">追加</button>
           </div>
           <div class="req-off-list" id="req-list-${i}">${reqTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
+        </div>
+        <div class="skill-section-title">有給休暇（特定の日付）</div>
+        <div class="yukyu-day-section">
+          <div class="yukyu-day-add-row">
+            <input type="date" class="req-off-date-input" id="pld-date-${i}" data-si="${i}">
+            <button class="req-off-add-btn" data-action="addPaidLeaveDay" data-si="${i}">追加</button>
+          </div>
+          <div class="yukyu-day-list" id="pld-list-${i}">${plTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
         </div>
         <div class="skill-section-title">要望・制約</div>
         <div class="consec-row">
@@ -2277,6 +2317,39 @@ document.getElementById('staffListEl').addEventListener('click', e => {
         staffSkills[name].requestedDaysOff.splice(idx, 1);
         saveData();
         refreshReqOffList(si, name);
+        renderTable();
+      }
+      return;
+    }
+
+    if (action === 'addPaidLeaveDay') {
+      const si   = parseInt(actionBtn.dataset.si, 10);
+      const name = staffList[si];
+      const inp  = document.getElementById(`pld-date-${si}`);
+      const dk   = inp?.value; // 'YYYY-MM-DD'
+      if (!dk) return;
+      ensureSkillObj(name);
+      if (!staffSkills[name].paidLeaveDays.includes(dk)) {
+        staffSkills[name].paidLeaveDays.push(dk);
+        staffSkills[name].paidLeaveDays.sort();
+        saveData();
+        refreshPaidLeaveDayList(si, name);
+        renderTable();
+      }
+      inp.value = '';
+      return;
+    }
+
+    if (action === 'removePaidLeaveDay') {
+      const si   = parseInt(actionBtn.dataset.si, 10);
+      const name = staffList[si];
+      const dk   = actionBtn.dataset.dk;
+      ensureSkillObj(name);
+      const idx = staffSkills[name].paidLeaveDays.indexOf(dk);
+      if (idx >= 0) {
+        staffSkills[name].paidLeaveDays.splice(idx, 1);
+        saveData();
+        refreshPaidLeaveDayList(si, name);
         renderTable();
       }
       return;
@@ -2377,7 +2450,7 @@ document.getElementById('staffListEl').addEventListener('click', e => {
 
 function ensureSkillObj(name) {
   if (!staffSkills[name]) {
-    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0, fixedShifts: {} };
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], paidLeaveDays: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0, fixedShifts: {} };
   }
   if (staffSkills[name].maxConsecutive === undefined) staffSkills[name].maxConsecutive = 0;
   if (!staffSkills[name].dateConstraints) staffSkills[name].dateConstraints = [];
@@ -2385,6 +2458,7 @@ function ensureSkillObj(name) {
   if (staffSkills[name].birthDay === undefined) staffSkills[name].birthDay = 0;
   if (staffSkills[name].workSun === undefined) staffSkills[name].workSun = false;
   if (!staffSkills[name].fixedShifts) staffSkills[name].fixedShifts = {};
+  if (!staffSkills[name].paidLeaveDays) staffSkills[name].paidLeaveDays = [];
 }
 
 function getMaxConsecutive(name)   { return staffSkills[name]?.maxConsecutive ?? 0; }
@@ -2492,6 +2566,24 @@ function refreshReqOffList(si, name) {
     return `<span class="req-off-tag">
       ${m2}/${d2}
       <button class="req-off-remove" data-action="removeReqOff" data-si="${si}" data-dk="${esc(dk)}" title="削除">×</button>
+    </span>`;
+  }).join('');
+}
+
+/** 有給休暇タグリストだけを再描画（スタッフ一覧全体を再描画せず） */
+function refreshPaidLeaveDayList(si, name) {
+  const el = document.getElementById(`pld-list-${si}`);
+  if (!el) return;
+  const plDays = getPaidLeaveDays(name).slice().sort();
+  if (plDays.length === 0) {
+    el.innerHTML = '<span style="font-size:11px;color:#aaa;">未設定</span>';
+    return;
+  }
+  el.innerHTML = plDays.map(dk => {
+    const [,m2,d2] = dk.split('-').map(Number);
+    return `<span class="yukyu-day-tag">
+      ${m2}/${d2}
+      <button class="yukyu-day-remove" data-action="removePaidLeaveDay" data-si="${si}" data-dk="${esc(dk)}" title="削除">×</button>
     </span>`;
   }).join('');
 }
