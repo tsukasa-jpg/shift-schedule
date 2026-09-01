@@ -35,6 +35,11 @@ staffSkills   // { staffName: {
               //     requestedDaysOff: string[],    // 希望休（"YYYY-MM-DD"）特定日
               //     fixedShifts: { [dow]: code },  // 曜日別 固定シフト（0=日〜6=土 → シフトコード）自動作成で優先割当
               //     paidLeaveDays: string[],       // 有給休暇（"YYYY-MM-DD"）特定日。自動作成時に自動で「有給」を設定
+              //     healthCheckDays: [             // 健康診断（"YYYY-MM-DD"指定）
+              //       { dk: "YYYY-MM-DD", type: "off"|"work" }
+              //       // off  = 一日休み  → 自動作成時に自動で「健診休」シフトコードを設定
+              //       // work = 終了次第出勤 → シフトコードは変更せず、シフト表セルに「健」バッジを表示するのみ
+              //     ],
               //     hourlyWage: number,            // 時給
               //     maxConsecutive: number,        // 最大連勤日数（0=制限なし）
               //     dateConstraints: [             // 日付別の要望・制約
@@ -159,7 +164,14 @@ Phase 1 → Phase 2 の2段階:
 
 ### シフト定義の変更
 
-`SHIFTS` 配列（ファイル上部）を編集する。`h` は拘束時間（実労働時間は `getPaidH(h)` で休憩控除済みに変換）。`誕`・`要`・`有給`・`休` はシフトスキルの選択対象外（`shiftChips` 生成時に `.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要')` で除外）。
+`SHIFTS` 配列（ファイル上部）を編集する。`h` は拘束時間（実労働時間は `getPaidH(h)` で休憩控除済みに変換）。`誕`・`要`・`有給`・`健診休`・`休` はシフトスキルの選択対象外（`shiftChips` 生成時に `.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要' && s.code !== '健診休')` で除外）。
+
+### 健康診断（`健診休` シフトコード + 出勤バッジ）
+
+スタッフ管理の「健康診断（特定の日付）」で日付＋種別（`一日休み` / `終了次第出勤`）を登録する（`healthCheckDays` に保存）。
+
+- `type: 'off'`（一日休み）: `runAutoCreate()` Phase 1 で `isHealthCheckOffDay()` が最優先級（`誕`・`有給`の直後）でチェックされ、自動で `健診休` シフトコードを設定する。`健診休` は `誕`/`有給` と同様の「実労働時間0の特殊シフト」で、シフト表・集計列にそのまま表示される。
+- `type: 'work'`（終了次第出勤）: シフトコード自体は変更しない（通常どおりローテーション等で決定される）。`isHealthCheckWorkDay()` が true の日は、`renderTable()`/`buildHalfTableHTML()` でセルに `.cell-kenshin-work` クラスを付与し、CSS の `::after` で右下に「健」バッジを重ねて表示するのみ（画面・印刷とも表示）。
 
 ```javascript
 { code: '早③', label: '早番③', time: '9:00～15:30', h: 6.5, bg: '#f4ee9c', fg: '#585800' }

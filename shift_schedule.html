@@ -173,6 +173,18 @@
       line-height: 1;
     }
 
+    /* 健康診断（終了次第出勤）バッジ：シフトの色はそのまま、右下に小さく表示 */
+    .cell-kenshin-work {
+      position: relative;
+      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    }
+    .cell-kenshin-work::after {
+      content: '健'; font-size: 8px; color: #fff; font-weight: bold;
+      position: absolute; bottom: 1px; right: 1px; line-height: 1;
+      background: #bf360c; border-radius: 2px; padding: 0 2px; pointer-events: none;
+      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    }
+
     /* Summary / work-skill cols */
     .col-sum { background: #f4f6fa; font-size: 10px; min-width: 26px; }
     .col-sum-total { font-weight: bold; color: #1e3a5f; }
@@ -391,6 +403,26 @@
       color: #6b21a8; font-size: 13px; line-height: 1; padding: 0;
     }
     .yukyu-day-remove:hover { color: #c53030; }
+
+    /* 健康診断（特定の日付） */
+    .kenshin-day-section { margin-top: 2px; }
+    .kenshin-day-add-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .kenshin-day-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    .kenshin-day-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      border-radius: 12px; padding: 2px 8px 2px 10px; font-size: 11px;
+    }
+    .kenshin-day-tag.type-off  { background: #ffe0d6; border: 1px solid #bf360c; color: #8a2e00; }
+    .kenshin-day-tag.type-work { background: #e0f2f1; border: 1px solid #00796b; color: #00695c; }
+    .kenshin-day-remove {
+      background: none; border: none; cursor: pointer;
+      color: inherit; font-size: 13px; line-height: 1; padding: 0;
+    }
+    .kenshin-day-remove:hover { color: #c53030; }
+    .kenshin-type-sel {
+      padding: 4px 5px; border: 1px solid #c0c8d4; border-radius: 4px;
+      font-size: 11px; font-family: inherit; color: #333; background: #f7f9fc;
+    }
 
     /* ===== 要望・制約 ===== */
     .consec-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: #333; }
@@ -866,6 +898,7 @@ const SHIFTS = [
   { code: '在',   label: '在宅',   time: '9:00～18:00',  h: 9,   bg: '#c8f0e8', fg: '#1a5c48' },
   { code: '誕',   label: '誕生日休暇', time: '-',        h: 0,   bg: '#fce4ec', fg: '#c2185b' },
   { code: '有給', label: '有給休暇',   time: '-',        h: 0,   bg: '#e8d5f5', fg: '#6b21a8' },
+  { code: '健診休', label: '健康診断（休み）', time: '-', h: 0,   bg: '#ffccbc', fg: '#bf360c' },
   { code: '配送①', label: '配送①', time: '3:00～12:00', h: 9,   bg: '#b3d9ff', fg: '#003580' },
   { code: '配送②', label: '配送②', time: '3:00～12:00', h: 9,   bg: '#90c8ff', fg: '#002570' },
   { code: '配送③', label: '配送③', time: '3:00～12:00', h: 9,   bg: '#c8e8ff', fg: '#004090' },
@@ -1140,6 +1173,7 @@ function getWorkSun(name)          { return staffSkills[name]?.workSun        ??
 function getRegularDaysOff(name)   { return staffSkills[name]?.regularDaysOff ?? []; }   // array of DOW (0-6)
 function getRequestedDaysOff(name) { return staffSkills[name]?.requestedDaysOff ?? []; } // array of 'YYYY-MM-DD'
 function getPaidLeaveDays(name)    { return staffSkills[name]?.paidLeaveDays ?? []; }     // array of 'YYYY-MM-DD'
+function getHealthCheckDays(name)  { return staffSkills[name]?.healthCheckDays ?? []; }   // [{ dk:'YYYY-MM-DD', type:'off'|'work' }]
 function getStaffType(name)        { return staffSkills[name]?.type           ?? 'パート'; } // 'パート' | '社員'
 function hasShiftSkill(name, code) { return getShiftSkills(name).includes(code); }
 
@@ -1157,6 +1191,18 @@ function isRequestedDayOff(name, y, m, d) {
 }
 function isPaidLeaveDay(name, y, m, d) {
   return getPaidLeaveDays(name).includes(dateStr(y, m, d));
+}
+function getHealthCheckEntry(name, y, m, d) {
+  const dk = dateStr(y, m, d);
+  return getHealthCheckDays(name).find(e => e.dk === dk) || null;
+}
+/** 健康診断で一日休みの日か（自動作成時に「健診休」を自動設定） */
+function isHealthCheckOffDay(name, y, m, d) {
+  return getHealthCheckEntry(name, y, m, d)?.type === 'off';
+}
+/** 健康診断を受けて終了次第出勤する日か（シフト表にバッジ表示のみ、シフトコードは変更しない） */
+function isHealthCheckWorkDay(name, y, m, d) {
+  return getHealthCheckEntry(name, y, m, d)?.type === 'work';
 }
 function getBirthMonth(name) { return staffSkills[name]?.birthMonth || 0; }
 function getBirthDay(name)   { return staffSkills[name]?.birthDay   || 0; }
@@ -1186,8 +1232,8 @@ function getPeriodLabel() {
 ===================================================== */
 function renderLegend() {
   const el = document.getElementById('legend');
-  // 画面・印刷ともに早①～有給（インデックス 0-10）のみ表示
-  const shiftChips = SHIFTS.slice(0, 11).map(s => {
+  // 画面・印刷ともに早①～健診休（インデックス 0-11）のみ表示
+  const shiftChips = SHIFTS.slice(0, 12).map(s => {
     const disp = s.code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : esc(s.code);
     const timeStr = s.time !== '-' ? `<span class="leg-time"> ${esc(s.time)}</span>` : '';
     return `<span class="leg-chip">
@@ -1350,7 +1396,7 @@ function renderTable() {
       const dc    = dayClass(day.y, day.m, day.d);
       const bnd   = i > 0 && day.d === 1 ? ' month-boundary' : '';
 
-      const mismatch = code && code !== '休' && code !== '有給' && code !== '要' && shiftSkls.length > 0 && !shiftSkls.includes(code);
+      const mismatch = code && code !== '休' && code !== '有給' && code !== '要' && code !== '健診休' && shiftSkls.length > 0 && !shiftSkls.includes(code);
       const warnCls  = mismatch ? ' skill-warn' : '';
       const cellStyle = shift ? `background:${shift.bg};color:${shift.fg};` : '';
       const cellDcCls = shift ? '' : dc;
@@ -1362,6 +1408,10 @@ function renderTable() {
         else if (isRequestedDayOff(name, day.y, day.m, day.d)) offCls = ' cell-req-off';
       }
 
+      // 健康診断（終了次第出勤）バッジ：シフトコードは変更せず、そのシフトの上にバッジ表示
+      const kenshinWork = isHealthCheckWorkDay(name, day.y, day.m, day.d);
+      const kenshinCls  = kenshinWork ? ' cell-kenshin-work' : '';
+
       // tooltip
       const regOff = isRegularDayOff(name, day.y, day.m, day.d);
       const reqOff = isRequestedDayOff(name, day.y, day.m, day.d);
@@ -1369,11 +1419,12 @@ function renderTable() {
       if (regOff) tipParts.push('定休日');
       if (reqOff) tipParts.push('希望休');
       if (code === '要') tipParts.push(`要望勤務（${getWorkRequestLabel(name, dk)}）`);
+      if (kenshinWork) tipParts.push('健康診断（終了次第出勤）');
       const tipAttr = tipParts.length ? ` title="${tipParts.join(' / ')}"` : '';
 
       const restCls = code === '休' ? ' shift-rest' : '';
       const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : code === '要' ? esc(getWorkRequestLabel(name, dk)) : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
-      html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${bnd}"` +
+      html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${kenshinCls}${bnd}"` +
               ` data-si="${idx}" data-di="${i}"` +
               ` style="${cellStyle}"${tipAttr}>${cellContent}</td>`;
     });
@@ -1544,7 +1595,7 @@ function openPopup(e, staff, dayObj, targetEl) {
   const grid = document.getElementById('popupGrid');
   grid.innerHTML =
     SHIFTS.map(s => {
-      const noSkill = s.code !== '休' && s.code !== '有給' && shiftSkls.length > 0 && !shiftSkls.includes(s.code);
+      const noSkill = s.code !== '休' && s.code !== '有給' && s.code !== '健診休' && shiftSkls.length > 0 && !shiftSkls.includes(s.code);
       const btnLabel = s.code === '誕' ? '🎂' : esc(s.code);
       const btnTime  = s.time !== '-' ? `<small>${esc(s.time)}</small>` : '';
       return `<button class="popup-shift-btn${noSkill ? ' no-skill' : ''}"
@@ -1665,8 +1716,9 @@ function buildHalfTableHTML(half) {
       const style = s ? `background:${s.bg};color:${s.fg};font-weight:bold;` : '';
       const dcCls = s ? '' : dc;
       const restCls = code === '休' ? ' shift-rest' : '';
+      const kenshinCls = isHealthCheckWorkDay(name, day.y, day.m, day.d) ? ' cell-kenshin-work' : '';
       const content = (!code || code === '休') ? '' : code === '要' ? esc(getWorkRequestLabel(name, dk)) : esc(code);
-      html += `<td class="${dcCls}${restCls}" style="${style}">${content}</td>`;
+      html += `<td class="${dcCls}${restCls}${kenshinCls}" style="${style}">${content}</td>`;
     });
     html += `</tr>`;
   });
@@ -1941,6 +1993,8 @@ function runAutoCreate() {
       if (isBirthday(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '誕'; return; }
       // 有給休暇（特定の日付指定）→ 自動で有給扱いにする
       if (isPaidLeaveDay(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '有給'; return; }
+      // 健康診断（一日休み指定日）→ 自動で健診休扱いにする
+      if (isHealthCheckOffDay(name, day.y, day.m, day.d)) { shiftData[pk][name][dk] = '健診休'; return; }
       // 要望勤務（開始〜終了時刻を指定した出勤依頼）→ 他の休みルールより優先して出勤扱いにする
       if (getWorkRequest(name, dk)) { shiftData[pk][name][dk] = '要'; return; }
       // 社員：会社カレンダー休業日 → 休み（ただし土曜=workSat・日曜祝日=workSunで出勤する場合は除く。
@@ -2121,9 +2175,10 @@ function renderStaffList() {
     const regOff     = getRegularDaysOff(name);   // DOW array
     const reqOff     = getRequestedDaysOff(name); // date strings
     const plDays     = getPaidLeaveDays(name);    // date strings
+    const hcDays     = getHealthCheckDays(name);  // [{dk,type}]
     const staffType  = getStaffType(name);
 
-    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要').map(s =>
+    const shiftChips = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要' && s.code !== '健診休').map(s =>
       `<span class="skill-chip${shiftSkls.includes(s.code) ? ' active' : ''}"
              style="background:${s.bg};color:${s.fg};"
              data-type="shift" data-si="${i}" data-code="${esc(s.code)}">${esc(s.code)}</span>`
@@ -2150,7 +2205,7 @@ function renderStaffList() {
 
     // 固定シフト: 曜日ごとに固定のシフトを割り当て（自動作成時に優先適用）
     const fixedShifts = getFixedShifts(name);
-    const fsShiftOpts = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要');
+    const fsShiftOpts = SKILL_SHIFTS.filter(s => s.code !== '有給' && s.code !== '誕' && s.code !== '要' && s.code !== '健診休');
     const fixedShiftCells = DOW_ORDER.map((dow, di) => {
       const label = DOW_NAMES[di];
       const cls   = dow === 6 ? ' sat' : dow === 0 ? ' sun' : '';
@@ -2181,6 +2236,16 @@ function renderStaffList() {
       return `<span class="yukyu-day-tag">
         ${label}
         <button class="yukyu-day-remove" data-action="removePaidLeaveDay" data-si="${i}" data-dk="${esc(dk)}" title="削除">×</button>
+      </span>`;
+    }).join('');
+
+    // 健康診断タグ一覧
+    const kenshinTags = hcDays.slice().sort((a, b) => a.dk.localeCompare(b.dk)).map(e => {
+      const [,m2,d2] = e.dk.split('-').map(Number);
+      const typeLabel = e.type === 'off' ? '休み' : '終了次第出勤';
+      return `<span class="kenshin-day-tag ${e.type === 'off' ? 'type-off' : 'type-work'}">
+        ${m2}/${d2}（${typeLabel}）
+        <button class="kenshin-day-remove" data-action="removeKenshinDay" data-si="${i}" data-dk="${esc(e.dk)}" title="削除">×</button>
       </span>`;
     }).join('');
 
@@ -2227,6 +2292,18 @@ function renderStaffList() {
             <button class="req-off-add-btn" data-action="addPaidLeaveDay" data-si="${i}">追加</button>
           </div>
           <div class="yukyu-day-list" id="pld-list-${i}">${plTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
+        </div>
+        <div class="skill-section-title">健康診断（特定の日付）</div>
+        <div class="kenshin-day-section">
+          <div class="kenshin-day-add-row">
+            <input type="date" class="req-off-date-input" id="kenshin-date-${i}" data-si="${i}">
+            <select class="kenshin-type-sel" id="kenshin-type-${i}">
+              <option value="off">一日休み</option>
+              <option value="work">終了次第出勤</option>
+            </select>
+            <button class="req-off-add-btn" data-action="addKenshinDay" data-si="${i}">追加</button>
+          </div>
+          <div class="kenshin-day-list" id="kenshin-list-${i}">${kenshinTags || '<span style="font-size:11px;color:#aaa;">未設定</span>'}</div>
         </div>
         <div class="skill-section-title">要望・制約</div>
         <div class="consec-row">
@@ -2355,6 +2432,37 @@ document.getElementById('staffListEl').addEventListener('click', e => {
       return;
     }
 
+    if (action === 'addKenshinDay') {
+      const si      = parseInt(actionBtn.dataset.si, 10);
+      const name    = staffList[si];
+      const inp     = document.getElementById(`kenshin-date-${si}`);
+      const typeSel = document.getElementById(`kenshin-type-${si}`);
+      const dk      = inp?.value; // 'YYYY-MM-DD'
+      const type    = typeSel?.value === 'work' ? 'work' : 'off';
+      if (!dk) return;
+      ensureSkillObj(name);
+      staffSkills[name].healthCheckDays = staffSkills[name].healthCheckDays.filter(e => e.dk !== dk);
+      staffSkills[name].healthCheckDays.push({ dk, type });
+      staffSkills[name].healthCheckDays.sort((a, b) => a.dk.localeCompare(b.dk));
+      saveData();
+      refreshKenshinDayList(si, name);
+      renderTable();
+      inp.value = '';
+      return;
+    }
+
+    if (action === 'removeKenshinDay') {
+      const si   = parseInt(actionBtn.dataset.si, 10);
+      const name = staffList[si];
+      const dk   = actionBtn.dataset.dk;
+      ensureSkillObj(name);
+      staffSkills[name].healthCheckDays = staffSkills[name].healthCheckDays.filter(e => e.dk !== dk);
+      saveData();
+      refreshKenshinDayList(si, name);
+      renderTable();
+      return;
+    }
+
     if (action === 'addDc') {
       const si   = parseInt(actionBtn.dataset.si, 10);
       const name = staffList[si];
@@ -2450,7 +2558,7 @@ document.getElementById('staffListEl').addEventListener('click', e => {
 
 function ensureSkillObj(name) {
   if (!staffSkills[name]) {
-    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], paidLeaveDays: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0, fixedShifts: {} };
+    staffSkills[name] = { type: 'パート', shifts: [], workSat: false, workSun: false, workSkills: [], regularDaysOff: [], requestedDaysOff: [], paidLeaveDays: [], healthCheckDays: [], hourlyWage: 0, maxConsecutive: 0, dateConstraints: [], birthMonth: 0, birthDay: 0, fixedShifts: {} };
   }
   if (staffSkills[name].maxConsecutive === undefined) staffSkills[name].maxConsecutive = 0;
   if (!staffSkills[name].dateConstraints) staffSkills[name].dateConstraints = [];
@@ -2459,6 +2567,7 @@ function ensureSkillObj(name) {
   if (staffSkills[name].workSun === undefined) staffSkills[name].workSun = false;
   if (!staffSkills[name].fixedShifts) staffSkills[name].fixedShifts = {};
   if (!staffSkills[name].paidLeaveDays) staffSkills[name].paidLeaveDays = [];
+  if (!staffSkills[name].healthCheckDays) staffSkills[name].healthCheckDays = [];
 }
 
 function getMaxConsecutive(name)   { return staffSkills[name]?.maxConsecutive ?? 0; }
@@ -2584,6 +2693,25 @@ function refreshPaidLeaveDayList(si, name) {
     return `<span class="yukyu-day-tag">
       ${m2}/${d2}
       <button class="yukyu-day-remove" data-action="removePaidLeaveDay" data-si="${si}" data-dk="${esc(dk)}" title="削除">×</button>
+    </span>`;
+  }).join('');
+}
+
+/** 健康診断タグリストだけを再描画（スタッフ一覧全体を再描画せず） */
+function refreshKenshinDayList(si, name) {
+  const el = document.getElementById(`kenshin-list-${si}`);
+  if (!el) return;
+  const hcDays = getHealthCheckDays(name).slice().sort((a, b) => a.dk.localeCompare(b.dk));
+  if (hcDays.length === 0) {
+    el.innerHTML = '<span style="font-size:11px;color:#aaa;">未設定</span>';
+    return;
+  }
+  el.innerHTML = hcDays.map(e => {
+    const [,m2,d2] = e.dk.split('-').map(Number);
+    const typeLabel = e.type === 'off' ? '休み' : '終了次第出勤';
+    return `<span class="kenshin-day-tag ${e.type === 'off' ? 'type-off' : 'type-work'}">
+      ${m2}/${d2}（${typeLabel}）
+      <button class="kenshin-day-remove" data-action="removeKenshinDay" data-si="${si}" data-dk="${esc(e.dk)}" title="削除">×</button>
     </span>`;
   }).join('');
 }
