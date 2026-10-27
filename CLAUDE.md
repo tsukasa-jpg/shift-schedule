@@ -128,6 +128,8 @@ Phase 1 → Phase 2 の2段階:
 | `getWorkRequest(name, dk)` | その日の要望勤務（`type:'work'`）の `dateConstraints` エントリを返す |
 | `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` | 要望勤務の表示ラベル／拘束時間数を算出 |
 | `migrateLegacyData()` | 旧データ形式（`配送`コード・旧`endBy`/`startFrom`制約）を現行形式へ変換。`loadData()`/`loadDataFromSupabase()` 共通 |
+| `getTodayPeriod()` / `isFuturePeriod()` | 今日が属する期間の開始年月／表示中の期間が今期より先か。自動作成の来期警告（モーダル内の`#autoFutureWarn`＋実行時`confirm`）と「この期間をクリア」ボタンの有効判定に使う |
+| `updateClearPeriodBtn()` | `renderTable()`冒頭で呼ばれ、`#clearPeriodBtn`を来期以降のみ有効にする。クリアは`delete shiftData[pk]`のみ（備考・他期間は不変）。今期・過去の期間は有給集計・連勤通算に使われるため消せない設計 |
 | `onAuthChange(session)` | Supabase Auth セッション変化時に UI 表示を切り替える |
 | `doLogin()` | ログインフォームの値で `signInWithPassword` を呼ぶ（async） |
 

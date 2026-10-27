@@ -59,6 +59,9 @@
     .hbtn-teal   { background: #319795; color: #fff; } .hbtn-teal:hover   { background: #2c7a7b; }
     .hbtn-ghost  { background: rgba(255,255,255,0.13); color: #fff; border: 1px solid rgba(255,255,255,0.28); }
     .hbtn-ghost:hover { background: rgba(255,255,255,0.22); }
+    .hbtn-red    { background: #e53e3e; color: #fff; } .hbtn-red:hover    { background: #c53030; }
+    .hbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .auto-future-warn { display: none; background: #fff5f5; border: 1px solid #fc8181; color: #c53030; font-size: 12px; font-weight: 700; padding: 8px 10px; border-radius: 4px; margin: 8px 0; line-height: 1.6; }
 
     /* ===== LEGEND ===== */
     #legend {
@@ -718,6 +721,7 @@
     <div id="editor-actions">
       <button class="hbtn hbtn-teal"   id="reqBtn">作業要件設定</button>
       <button class="hbtn hbtn-orange" id="autoCreateBtn">自動作成</button>
+      <button class="hbtn hbtn-red"    id="clearPeriodBtn" title="来期以降のシフトを空白に戻します（今期・過去の期間は消せません）">この期間をクリア</button>
       <button class="hbtn hbtn-ghost"  id="manageStaffBtn">スタッフ管理</button>
       <button class="hbtn hbtn-ghost"  id="paidLeaveBtn">有給管理</button>
     </div>
@@ -800,6 +804,7 @@
   <div id="autoDialog" class="modal-box">
     <h2>自動シフト作成</h2>
     <p style="font-size:12px;color:#555;">スタッフのシフトスキル・作業スキルと作業要件をもとにシフトを自動割り当てします。</p>
+    <div id="autoFutureWarn" class="auto-future-warn"></div>
     <div class="auto-option">
       <input type="checkbox" id="optSatRest" checked>
       <label for="optSatRest">土曜日は基本「休み」にする（個人設定で上書き可）</label>
@@ -1273,6 +1278,7 @@ function renderBiko() {
 ===================================================== */
 function renderTable() {
   document.getElementById('currentMonthLabel').textContent = getPeriodLabel();
+  updateClearPeriodBtn();
 
   const periodDays = getPeriodDays();
   const pk   = periodKey();
@@ -1924,12 +1930,28 @@ function changeMonth(delta) {
   if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
   renderTable();
 }
-function goToday() {
+function getTodayPeriod() {
   const now = new Date();
   let y = now.getFullYear(), m = now.getMonth() + 1;
   if (now.getDate() < 16) { m--; if (m < 1) { m = 12; y--; } }
-  currentYear = y; currentMonth = m;
+  return { y, m };
+}
+function isFuturePeriod() {
+  const t = getTodayPeriod();
+  return currentYear * 12 + currentMonth > t.y * 12 + t.m;
+}
+function goToday() {
+  const t = getTodayPeriod();
+  currentYear = t.y; currentMonth = t.m;
   renderTable();
+}
+function updateClearPeriodBtn() {
+  const btn = document.getElementById('clearPeriodBtn');
+  const future = isFuturePeriod();
+  btn.disabled = !future;
+  btn.title = future
+    ? 'この期間のシフトをすべて空白に戻します'
+    : '今期・過去の期間はクリアできません（来期以降のみ）';
 }
 
 /* =====================================================
@@ -1951,9 +1973,32 @@ document.getElementById('autoOverlay').addEventListener('click', e => {
 /* =====================================================
    AUTO-CREATE
 ===================================================== */
-document.getElementById('autoCreateBtn').addEventListener('click', () => openModal('autoOverlay'));
+document.getElementById('autoCreateBtn').addEventListener('click', () => {
+  const warn = document.getElementById('autoFutureWarn');
+  if (isFuturePeriod()) {
+    warn.textContent = `⚠ 表示中の期間（${getPeriodLabel()}）は今期ではなく来期以降です。作成する期間に間違いがないか確認してください。`;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+  openModal('autoOverlay');
+});
 document.getElementById('autoCancelBtn').addEventListener('click', () => closeModal('autoOverlay'));
-document.getElementById('autoRunBtn').addEventListener('click', runAutoCreate);
+document.getElementById('autoRunBtn').addEventListener('click', () => {
+  if (isFuturePeriod() && !confirm(`「${getPeriodLabel()}」は来期以降の期間です。\nこの期間のシフトを自動作成しますか？`)) return;
+  runAutoCreate();
+});
+
+document.getElementById('clearPeriodBtn').addEventListener('click', () => {
+  if (!currentUser || !isFuturePeriod()) return;
+  const pk = periodKey();
+  const cells = Object.values(shiftData[pk] || {}).reduce((n, s) => n + Object.keys(s).length, 0);
+  if (cells === 0) { alert('この期間にはシフトが入っていません。'); return; }
+  if (!confirm(`「${getPeriodLabel()}」のシフト ${cells} 件をすべて空白に戻します。\n（今期・過去の期間と備考欄は変わりません）\nよろしいですか？`)) return;
+  delete shiftData[pk];
+  saveData();
+  renderTable();
+});
 
 function runAutoCreate() {
   closeModal('autoOverlay');
