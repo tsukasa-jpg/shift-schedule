@@ -108,6 +108,7 @@ Phase 1 → Phase 2 の2段階:
 特定の日だけ通常のシフトスキルにない時間帯で働きたい、という要望をそのまま実際の勤務として自動作成に反映する仕組み。
 
 - 入力: スタッフ管理の「要望・制約」で日付＋開始時刻＋終了時刻（`<input type="time" step="1800">` で30分単位）を追加 → `dateConstraints` に `{ dk, type: 'work', start: 'HH:MM', end: 'HH:MM' }` として保存
+- 終了時刻の横の「最終まで」チェックで `end: '最終'`（定数 `WORK_REQ_LAST`）を保存できる（業務が終わり次第終了＝終わり仕舞い）。表示は `14-最終`。労働時間の集計では `WORK_REQ_LAST_HOURS_END`（`'21:00'`）で終わったものとして数える
 - `SHIFTS` 配列に `{ code: '要', label: '要望勤務', time: '-', h: 0, ... }` として登録されているが、`h`/`time` はダミー値（実際の時間は固定ではなく日付ごとに異なるため）
 - 表示ラベル・実労働時間は `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` で都度その日の `dateConstraints` から算出する（`renderTable()`・`buildHalfTableHTML()`・月間総労働時間の集計すべてで共通）。ラベルは分単位が00なら省略（例: `9-12`）、30分単位なら `9:30-12:30` のように表示
 - **旧形式からの移行**: 以前は `type: 'endBy'|'startFrom'` ＋時刻（時間単位のみ）で「既存シフトコードを絞り込むフィルター」として機能していたが、絞り込んだ結果シフトが1つも残らない場合に**制約を無視してしまうバグ**があった。現在は「フィルター」ではなく「その時間帯で直接勤務させる」方式に変更し、`migrateLegacyData()`（`loadData()`/`loadDataFromSupabase()` 共通）で旧データを自動変換する: `endBy(H)` → `09:00〜H:00`、`startFrom(H)` → `H:00〜20:00`（開店・閉店時刻は目安の仮定値）

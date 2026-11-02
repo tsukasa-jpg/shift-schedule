@@ -436,6 +436,7 @@
       font-size: 11px; font-family: inherit; color: #333; background: #f7f9fc;
     }
     .dc-time-input { width: 84px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; text-align: center; }
+    .dc-last-label { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: #333; cursor: pointer; white-space: nowrap; }
     .dc-memo-input { flex: 1; min-width: 80px; padding: 4px 6px; border: 1px solid #c0c8d4; border-radius: 4px; font-size: 12px; font-family: inherit; }
     .dc-add-btn { padding: 4px 10px; background: #805ad5; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; white-space: nowrap; }
     .dc-add-btn:hover { background: #6b46c1; }
@@ -2377,6 +2378,7 @@ function renderStaffList() {
               <input type="time" class="dc-time-input" id="dc-start-${i}" step="1800">
               〜
               <input type="time" class="dc-time-input" id="dc-end-${i}" step="1800">
+              <label class="dc-last-label"><input type="checkbox" class="dc-last-chk" id="dc-last-${i}">最終まで</label>
             </span>
             <input type="text" class="dc-memo-input" id="dc-memo-${i}" placeholder="内容" style="display:none;">
             <button class="dc-add-btn" data-action="addDc" data-si="${i}">追加</button>
@@ -2522,9 +2524,12 @@ document.getElementById('staffListEl').addEventListener('click', e => {
         if (!text) return;
         staffSkills[name].dateConstraints.push({ dk, type: 'memo', text });
       } else {
-        const start = document.getElementById(`dc-start-${si}`)?.value;
-        const end   = document.getElementById(`dc-end-${si}`)?.value;
-        if (!start || !end || start >= end) return;
+        const start  = document.getElementById(`dc-start-${si}`)?.value;
+        const toLast = document.getElementById(`dc-last-${si}`)?.checked;
+        const end    = toLast ? WORK_REQ_LAST : document.getElementById(`dc-end-${si}`)?.value;
+        if (!start || !end) return;
+        if (!toLast && start >= end) return;
+        if (toLast && start >= WORK_REQ_LAST_HOURS_END) return;
         staffSkills[name].dateConstraints.push({ dk, type: 'work', start, end });
       }
       staffSkills[name].dateConstraints.sort((a, b) => a.dk.localeCompare(b.dk));
@@ -2533,6 +2538,8 @@ document.getElementById('staffListEl').addEventListener('click', e => {
       document.getElementById(`dc-date-${si}`).value = '';
       document.getElementById(`dc-start-${si}`).value = '';
       document.getElementById(`dc-end-${si}`).value = '';
+      document.getElementById(`dc-end-${si}`).disabled = false;
+      document.getElementById(`dc-last-${si}`).checked = false;
       document.getElementById(`dc-memo-${si}`).value = '';
       return;
     }
@@ -2630,11 +2637,16 @@ function getWorkRequest(name, dk) {
   return getDateConstraints(name).find(c => c.dk === dk && c.type === 'work');
 }
 
-/** 要望勤務セルの表示ラベル（例: "9-12", "9:30-18"）を返す */
+// 終了時刻「最終」＝業務が終わり次第終了（終わり仕舞い）。労働時間の集計ではこの時刻で終わったものとして数える
+const WORK_REQ_LAST = '最終';
+const WORK_REQ_LAST_HOURS_END = '21:00';
+
+/** 要望勤務セルの表示ラベル（例: "9-12", "9:30-18", "14-最終"）を返す */
 function getWorkRequestLabel(name, dk) {
   const dc = getWorkRequest(name, dk);
   if (!dc) return '要';
   const fmt = t => {
+    if (t === WORK_REQ_LAST) return WORK_REQ_LAST;
     const [h, m] = t.split(':').map(Number);
     return m ? `${h}:${String(m).padStart(2, '0')}` : String(h);
   };
@@ -2645,7 +2657,8 @@ function getWorkRequestLabel(name, dk) {
 function getWorkRequestHours(name, dk) {
   const dc = getWorkRequest(name, dk);
   if (!dc) return 0;
-  return parseHourStr(dc.end) - parseHourStr(dc.start);
+  const end = dc.end === WORK_REQ_LAST ? WORK_REQ_LAST_HOURS_END : dc.end;
+  return parseHourStr(end) - parseHourStr(dc.start);
 }
 
 /** y1年m1月16日開始の期間に入る直前時点で、nameが何日連続勤務中かを返す（前期以前を遡って計算）。
@@ -2832,6 +2845,11 @@ document.getElementById('staffListEl').addEventListener('change', e => {
     const memoInp  = document.getElementById(`dc-memo-${si}`);
     if (workWrap) workWrap.style.display = isMemo ? 'none' : '';
     if (memoInp)  memoInp.style.display  = isMemo ? '' : 'none';
+  }
+  if (e.target.classList.contains('dc-last-chk')) {
+    const si = parseInt(e.target.id.replace('dc-last-', ''), 10);
+    const endInp = document.getElementById(`dc-end-${si}`);
+    if (endInp) { endInp.disabled = e.target.checked; if (e.target.checked) endInp.value = ''; }
   }
 });
 
