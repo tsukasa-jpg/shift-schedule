@@ -557,6 +557,10 @@
         white-space: nowrap;
       }
       body.printing-halves .half-tbl .col-name { width: 20mm; }
+      body.printing-halves .half-tbl .wreq {
+        display: inline-block; white-space: normal; line-height: 1.05;
+        font-size: 8px; letter-spacing: -0.2px; vertical-align: middle;
+      }
       body.printing-halves .half-block-title { font-size: 10px; margin-bottom: 2px; }
       body.printing-halves .half-print-section { page-break-after: always; }
       body.printing-halves .half-print-section:last-child { page-break-after: avoid; }
@@ -612,6 +616,11 @@
       /* 氏名列は固定幅・見やすく、日付列は残り幅を均等分配 */
       .col-name  { width: 20mm; min-width: unset; max-width: unset; font-size: 9px; font-weight: bold; }
       .dh-num, .dh-dow, .dh-month, .shift-cell { width: auto; min-width: unset; }
+      /* 要望勤務ラベル（例: 14-最終, 9:30-12:30）は8px・1行だとA4の日付列幅に収まらないため縮小し、必要なら"-"の後で2行に */
+      #shiftTable .wreq {
+        display: inline-block; white-space: normal; line-height: 1.05;
+        font-size: 6.5px; letter-spacing: -0.2px; vertical-align: middle;
+      }
       /* 出勤以外のセルは白背景 */
       .shift-rest { background: #fff !important; color: #fff !important; }
       .cell-req-off { background-color: #fff !important; }
@@ -1430,7 +1439,7 @@ function renderTable() {
       const tipAttr = tipParts.length ? ` title="${tipParts.join(' / ')}"` : '';
 
       const restCls = code === '休' ? ' shift-rest' : '';
-      const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : code === '要' ? esc(getWorkRequestLabel(name, dk)) : (code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
+      const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : code === '要' ? workRequestCellHtml(name, dk) :(code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
       html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${kenshinCls}${bnd}"` +
               ` data-si="${idx}" data-di="${i}"` +
               ` style="${cellStyle}"${tipAttr}>${cellContent}</td>`;
@@ -1724,7 +1733,7 @@ function buildHalfTableHTML(half) {
       const dcCls = s ? '' : dc;
       const restCls = code === '休' ? ' shift-rest' : '';
       const kenshinCls = isHealthCheckWorkDay(name, day.y, day.m, day.d) ? ' cell-kenshin-work' : '';
-      const content = (!code || code === '休') ? '' : code === '要' ? esc(getWorkRequestLabel(name, dk)) : esc(code);
+      const content = (!code || code === '休') ? '' : code === '要' ? workRequestCellHtml(name, dk) : esc(code);
       html += `<td class="${dcCls}${restCls}${kenshinCls}" style="${style}">${content}</td>`;
     });
     html += `</tr>`;
@@ -2657,6 +2666,11 @@ function getWorkRequestLabel(name, dk) {
     return m ? `${h}:${String(m).padStart(2, '0')}` : String(h);
   };
   return `${fmt(dc.start)}-${fmt(dc.end)}`;
+}
+
+/** シフト表セル用の要望勤務ラベルHTML。印刷時に狭いセルでも切れないよう、"-" の後ろで折り返し可能にする（CSS `.wreq`） */
+function workRequestCellHtml(name, dk) {
+  return `<span class="wreq">${esc(getWorkRequestLabel(name, dk)).replace('-', '-<wbr>')}</span>`;
 }
 
 /** 要望勤務の拘束時間数（休憩控除前）を返す */
