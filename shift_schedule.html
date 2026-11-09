@@ -2375,9 +2375,9 @@ function renderStaffList() {
               <option value="memo">メモ</option>
             </select>
             <span id="dc-work-wrap-${i}">
-              <input type="time" class="dc-time-input" id="dc-start-${i}" step="1800">
+              <select class="dc-time-input" id="dc-start-${i}">${DC_TIME_OPTIONS}</select>
               〜
-              <input type="time" class="dc-time-input" id="dc-end-${i}" step="1800">
+              <select class="dc-time-input" id="dc-end-${i}">${DC_TIME_OPTIONS}</select>
               <label class="dc-last-label"><input type="checkbox" class="dc-last-chk" id="dc-last-${i}">最終まで</label>
             </span>
             <input type="text" class="dc-memo-input" id="dc-memo-${i}" placeholder="内容" style="display:none;">
@@ -2641,6 +2641,12 @@ function getWorkRequest(name, dk) {
 const WORK_REQ_LAST = '最終';
 const WORK_REQ_LAST_HOURS_END = '22:00';
 
+// 要望勤務の時刻選択肢（6:00〜22:00、30分刻み）。値は従来の<input type="time">と同じ "HH:MM" 形式
+const DC_TIME_OPTIONS = '<option value="">--:--</option>' + Array.from({ length: 33 }, (_, k) => {
+  const h = 6 + Math.floor(k / 2), m = k % 2 ? '30' : '00';
+  return `<option value="${pad2(h)}:${m}">${h}:${m}</option>`;
+}).join('');
+
 /** 要望勤務セルの表示ラベル（例: "9-12", "9:30-18", "14-最終"）を返す */
 function getWorkRequestLabel(name, dk) {
   const dc = getWorkRequest(name, dk);
@@ -2702,16 +2708,23 @@ function wouldExceedMaxConsecutive(name, dayIdx, days, pk) {
   return streak > maxC;
 }
 
+// 過去日の登録は一覧に出さずデータとしては残す（削除するとシフト表の「要」セルの時刻・労働時間が失われるため）
 function buildDcTags(name, i) {
   const list = getDateConstraints(name);
-  if (!list.length) return '<span style="font-size:11px;color:#aaa;">未設定</span>';
-  return list.map((dc, ci) => {
+  const now = new Date();
+  const today = dateStr(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  const shown = list.map((dc, ci) => ({ dc, ci })).filter(x => x.dc.dk >= today);
+  const hiddenNote = list.length > shown.length
+    ? `<span style="font-size:11px;color:#888;">過去の登録 ${list.length - shown.length} 件は非表示（シフト表の時刻・労働時間の計算に使うため保存されています）</span>`
+    : '';
+  if (!shown.length) return hiddenNote || '<span style="font-size:11px;color:#aaa;">未設定</span>';
+  return shown.map(({ dc, ci }) => {
     const [,m2,d2] = dc.dk.split('-').map(Number);
     let label, cls;
     if (dc.type === 'work') { label = `${m2}/${d2} ${dc.start}〜${dc.end}`; cls = 'type-work'; }
     else                    { label = `${m2}/${d2} ${dc.text}`;             cls = ''; }
     return `<span class="dc-tag ${cls}">${label}<button class="dc-remove" data-action="removeDc" data-si="${i}" data-ci="${ci}" title="削除">×</button></span>`;
-  }).join('');
+  }).join('') + hiddenNote;
 }
 
 function refreshDcList(si, name) {
