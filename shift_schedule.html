@@ -561,6 +561,7 @@
         display: inline-block; white-space: normal; line-height: 1.05;
         font-size: 8px; letter-spacing: -0.2px; vertical-align: middle;
       }
+      body.printing-halves .half-tbl .wreq-long { max-width: 3.6em; }
       body.printing-halves .half-block-title { font-size: 10px; margin-bottom: 2px; }
       body.printing-halves .half-print-section { page-break-after: always; }
       body.printing-halves .half-print-section:last-child { page-break-after: avoid; }
@@ -621,6 +622,8 @@
         display: inline-block; white-space: normal; line-height: 1.05;
         font-size: 6.5px; letter-spacing: -0.2px; vertical-align: middle;
       }
+      /* ":"入りの長いラベル（13-18:30 等）は1行だと実機プリンタで端が切れるため、幅を狭めて必ず"-"の後で2行にする */
+      #shiftTable .wreq-long { max-width: 3.6em; }
       /* 出勤以外のセルは白背景 */
       .shift-rest { background: #fff !important; color: #fff !important; }
       .cell-req-off { background-color: #fff !important; }
@@ -2668,9 +2671,12 @@ function getWorkRequestLabel(name, dk) {
   return `${fmt(dc.start)}-${fmt(dc.end)}`;
 }
 
-/** シフト表セル用の要望勤務ラベルHTML。印刷時に狭いセルでも切れないよう、"-" の後ろで折り返し可能にする（CSS `.wreq`） */
+/** シフト表セル用の要望勤務ラベルHTML。印刷時に狭いセルでも切れないよう、"-" の後ろで折り返し可能にする（CSS `.wreq`）。
+ *  "13-18:30" のように":"を含む長いラベルは、プリンタによって1行だとギリギリ切れるため印刷時は必ず2行（.wreq-long） */
 function workRequestCellHtml(name, dk) {
-  return `<span class="wreq">${esc(getWorkRequestLabel(name, dk)).replace('-', '-<wbr>')}</span>`;
+  const label = getWorkRequestLabel(name, dk);
+  const cls = label.includes(':') ? 'wreq wreq-long' : 'wreq';
+  return `<span class="${cls}">${esc(label).replace('-', '-<wbr>')}</span>`;
 }
 
 /** 要望勤務の拘束時間数（休憩控除前）を返す */

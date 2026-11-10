@@ -139,7 +139,7 @@ Phase 1 → Phase 2 の2段階:
 
 - **A4横・A3横**（通常月間印刷）: `printWithPageSize(size)` でページサイズを動的注入して `window.print()`。`#biko-section` は通常の DOM 要素として `@media print` CSS で表示される。
 - **前半のみ・後半のみ・両面印刷（A4横）**: `printHalfMonth(half)` / `printBothHalves()` → `doHalfPrint()` で `#half-print-area` に前半・後半の独立テーブルを生成。`body.printing-halves` クラスで `#half-print-area` 以外を `display: none !important` にして印刷。備考欄は `halfBikoHtml()` で HTML 文字列として生成し、最後の `half-print-section` の末尾に連結して埋め込む（`#biko-section` DOM 要素は `body.printing-halves` で非表示になるため）。
-- **要望勤務ラベルの印刷**: `14-最終`・`9:30-12:30` などはA4月間印刷の日付列（約8.5mm）に8pxで収まらず切れていたため、セルの中身は `workRequestCellHtml()` で `<span class="wreq">` に包み、`-` の後に `<wbr>` を入れている。印刷時は `#shiftTable .wreq` を6.5px（半月印刷は `.half-tbl .wreq` を8px）・`white-space: normal` にして、必要なら2行に折り返す
+- **要望勤務ラベルの印刷**: `14-最終`・`9:30-12:30` などはA4月間印刷の日付列（約8.5mm）に8pxで収まらず切れていたため、セルの中身は `workRequestCellHtml()` で `<span class="wreq">` に包み、`-` の後に `<wbr>` を入れている。印刷時は `#shiftTable .wreq` を6.5px（半月印刷は `.half-tbl .wreq` を8px）・`white-space: normal` にして、必要なら2行に折り返す。さらに `:` を含むラベル（`13-18:30` 等）は1行でもヘッドレス計測上は収まるが実機プリンタでは端が切れたため、`.wreq-long`（`max-width: 3.6em`）で必ず `-` の後で2行にする。検証はCDPの `Page.printToPDF` → Windows.Data.Pdf でPNG化して目視するのが確実（印刷メディアのエミュレーション計測だけでは不十分）
 - **背景色の印刷**: セルの背景色はブラウザのデフォルト設定では印刷されない。`print-color-adjust: exact` と `-webkit-print-color-adjust: exact` を `@media print` 内のセルセレクタに付与して強制出力している。
 
 ### 作業要件カバレッジの可視化
