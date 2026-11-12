@@ -114,6 +114,16 @@ Phase 1 → Phase 2 の2段階:
 - 表示ラベル・実労働時間は `getWorkRequestLabel(name, dk)` / `getWorkRequestHours(name, dk)` で都度その日の `dateConstraints` から算出する（`renderTable()`・`buildHalfTableHTML()`・月間総労働時間の集計すべてで共通）。ラベルは分単位が00なら省略（例: `9-12`）、30分単位なら `9:30-12:30` のように表示
 - **旧形式からの移行**: 以前は `type: 'endBy'|'startFrom'` ＋時刻（時間単位のみ）で「既存シフトコードを絞り込むフィルター」として機能していたが、絞り込んだ結果シフトが1つも残らない場合に**制約を無視してしまうバグ**があった。現在は「フィルター」ではなく「その時間帯で直接勤務させる」方式に変更し、`migrateLegacyData()`（`loadData()`/`loadDataFromSupabase()` 共通）で旧データを自動変換する: `endBy(H)` → `09:00〜H:00`、`startFrom(H)` → `H:00〜20:00`（開店・閉店時刻は目安の仮定値）
 
+### 日替わり実習生（セルに当日の実習生名）
+
+常時いる実習生とは別に、9人ほどの実習生のうち日替わりで2人来る分を「実習生A/B」のような枠の行で管理するための機能。
+
+- 対象行: スタッフ管理の「日替わり実習生の枠」チェック（`staffSkills[name].traineeSlot`）がON、または名前が `実習生` で始まる行（`isTraineeSlot()`）
+- データ: `traineePool`（名簿 string[]）と `cellNames`（`{ periodKey: { staffName: { dk: 実習生名 } } }`）。どちらも localStorage・Supabase の保存/読込に追加済み。シフトコードは `shiftData` のまま（時間・集計は従来どおり）
+- 入力: 対象行のセルをクリック → ポップアップ下部「この日の実習生」で名前を選ぶ（名簿への追加・×で名簿から削除。削除しても入力済みの日は残る）
+- 表示: `withTraineeName()` がシフト（上）＋名前（下）の2行にする（`renderTable`・`buildHalfTableHTML` 共通）。シフトを空白/休にすると名前も消える。「この期間をクリア」で `cellNames[pk]` も消える
+- 印刷: 月間は6.5px、半月は8px。5文字（ソムチャイ）までA4月間で収まることをPDF化して確認済み
+
 ### 主要関数
 
 | 関数 | 役割 |

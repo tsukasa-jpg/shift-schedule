@@ -255,6 +255,23 @@
       font-family: inherit; font-size: 11px;
     }
     .popup-cancel-btn:hover { background: #dde1e7; }
+    /* 日替わり実習生の名前選択 */
+    .popup-trainee { display: none; margin-top: 8px; padding-top: 7px; border-top: 1px solid #e4e8ee; max-width: 260px; }
+    .pt-title { font-size: 10px; font-weight: bold; color: #3a4a5c; margin-bottom: 4px; }
+    .pt-names { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    .pt-chip { display: inline-flex; border: 1px solid #c8cdd5; border-radius: 5px; overflow: hidden; }
+    .pt-chip.pt-cur { outline: 2px solid rgba(0,0,0,0.5); }
+    .pt-name { border: none; background: #fbe2c4; color: #7a3e00; font-weight: bold; font-size: 12px; padding: 4px 7px; cursor: pointer; font-family: inherit; }
+    .pt-name:hover { filter: brightness(0.9); }
+    .pt-del { border: none; border-left: 1px solid #e0c8a8; background: #fff; color: #999; font-size: 11px; padding: 0 5px; cursor: pointer; }
+    .pt-del:hover { color: #e53e3e; }
+    .pt-none { border: 1px dashed #b0b8c4; background: #fff; color: #888; border-radius: 5px; font-size: 11px; padding: 3px 6px; cursor: pointer; font-family: inherit; }
+    .pt-add { display: flex; gap: 4px; }
+    .pt-add input { flex: 1; min-width: 0; font-size: 11px; padding: 3px 5px; border: 1px solid #c8cdd5; border-radius: 4px; font-family: inherit; }
+    .pt-add button { font-size: 11px; padding: 3px 8px; border: 1px solid #c8cdd5; border-radius: 4px; background: #e8eaf0; cursor: pointer; font-family: inherit; }
+    /* シフト表セル：シフト（上）＋実習生名（下）の2行 */
+    .tslot-code { display: block; line-height: 1.1; }
+    .tname { display: block; font-size: 10px; line-height: 1.1; font-weight: bold; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; }
 
     /* ===== MODALS (shared overlay style) ===== */
     .modal-overlay {
@@ -562,6 +579,8 @@
         font-size: 8px; letter-spacing: -0.2px; vertical-align: middle;
       }
       body.printing-halves .half-tbl .wreq-long { max-width: 3.6em; }
+      body.printing-halves .half-tbl .tslot-code,
+      body.printing-halves .half-tbl .tname { font-size: 8px; line-height: 1.05; }
       body.printing-halves .half-block-title { font-size: 10px; margin-bottom: 2px; }
       body.printing-halves .half-print-section { page-break-after: always; }
       body.printing-halves .half-print-section:last-child { page-break-after: avoid; }
@@ -624,6 +643,8 @@
       }
       /* ":"入りの長いラベル（13-18:30 等）は1行だと実機プリンタで端が切れるため、幅を狭めて必ず"-"の後で2行にする */
       #shiftTable .wreq-long { max-width: 3.6em; }
+      #shiftTable .tslot-code { font-size: 6.5px; line-height: 1.05; }
+      #shiftTable .tname { font-size: 6.5px; line-height: 1.05; letter-spacing: -0.3px; }
       /* 出勤以外のセルは白背景 */
       .shift-rest { background: #fff !important; color: #fff !important; }
       .cell-req-off { background-color: #fff !important; }
@@ -776,6 +797,7 @@
   <div class="popup-title" id="popupTitle"></div>
   <div class="popup-info-row" id="popupInfoRow"></div>
   <div class="popup-grid" id="popupGrid"></div>
+  <div class="popup-trainee" id="popupTrainee"></div>
 </div>
 
 <!-- ===== STAFF DIALOG ===== -->
@@ -998,6 +1020,8 @@ let staffSkills  = {};  // { name: { shifts: string[], workSat: bool, workSkills
 let workSkillReqs = {}; // { wsName: { dow(0-6): count } }
 let bikoNotes     = {}; // { periodKey: string }
 let paidLeaveData = {}; // { name: { "YYYY": { granted: N } } }  YYYY = 年度開始年
+let traineePool   = []; // 日替わり実習生の名簿（名前の候補）
+let cellNames     = {}; // { periodKey: { staffName: { 'YYYY-MM-DD': 実習生名 } } } 日替わり実習生枠の行（staffSkills.traineeSlot、または名前が「実習生」始まり）のセルに表示する当日の実習生名
 
 let popupTarget  = null;
 let currentUser  = null; // Supabase Auth user object (null = not logged in)
@@ -1038,6 +1062,8 @@ function loadData() {
     workSkillReqs = typeof d.workSkillReqs  === 'object' && d.workSkillReqs ? d.workSkillReqs : defaultReqs();
     bikoNotes     = typeof d.bikoNotes      === 'object' && d.bikoNotes     ? d.bikoNotes     : {};
     paidLeaveData = typeof d.paidLeaveData  === 'object' && d.paidLeaveData ? d.paidLeaveData : {};
+    traineePool   = Array.isArray(d.traineePool)                             ? d.traineePool   : [];
+    cellNames     = typeof d.cellNames      === 'object' && d.cellNames     ? d.cellNames     : {};
     migrateLegacyData();
   } catch {
     staffList = defaultStaff();
@@ -1047,7 +1073,7 @@ function loadData() {
 }
 function _saveLocal() {
   const updatedAt = new Date().toISOString();
-  localStorage.setItem('shiftAppV4', JSON.stringify({ staffList, shiftData, staffSkills, workSkillReqs, bikoNotes, paidLeaveData, updatedAt }));
+  localStorage.setItem('shiftAppV4', JSON.stringify({ staffList, shiftData, staffSkills, workSkillReqs, bikoNotes, paidLeaveData, traineePool, cellNames, updatedAt }));
 }
 function _localUpdatedAt() {
   try { return new Date(JSON.parse(localStorage.getItem('shiftAppV4') || '{}').updatedAt || 0).getTime(); }
@@ -1080,7 +1106,7 @@ async function saveDataToSupabase() {
   try {
     const { error } = await _supabase
       .from('shift_app_data')
-      .upsert({ id: 'main', data: { staffList, shiftData, staffSkills, workSkillReqs, bikoNotes, paidLeaveData }, updated_at: new Date().toISOString() });
+      .upsert({ id: 'main', data: { staffList, shiftData, staffSkills, workSkillReqs, bikoNotes, paidLeaveData, traineePool, cellNames }, updated_at: new Date().toISOString() });
     if (error) throw error;
     setSyncStatus('ok');
   } catch (e) {
@@ -1120,6 +1146,8 @@ async function loadDataFromSupabase() {
     if (typeof d.workSkillReqs === 'object' && d.workSkillReqs)            workSkillReqs = d.workSkillReqs;
     if (typeof d.bikoNotes     === 'object' && d.bikoNotes)                bikoNotes     = d.bikoNotes;
     if (typeof d.paidLeaveData === 'object' && d.paidLeaveData)            paidLeaveData = d.paidLeaveData;
+    if (Array.isArray(d.traineePool))                                      traineePool   = d.traineePool;
+    if (typeof d.cellNames     === 'object' && d.cellNames)                cellNames     = d.cellNames;
     // 旧データ移行を再適用
     migrateLegacyData();
     _saveLocal();
@@ -1181,7 +1209,25 @@ function setShift(staff, dayObj, code) {
   if (!shiftData[pk][staff]) shiftData[pk][staff] = {};
   if (code === '') delete shiftData[pk][staff][dk];
   else             shiftData[pk][staff][dk] = code;
+  if ((code === '' || code === '休') && cellNames[pk]?.[staff]) delete cellNames[pk][staff][dk];
   saveData();
+}
+
+/* ===== 日替わり実習生（スタッフ管理で「日替わり実習生の枠」にした行のセルに当日の実習生名を表示） ===== */
+function isTraineeSlot(staff) { return !!staffSkills[staff]?.traineeSlot || staff.startsWith('実習生'); }
+function getCellName(staff, dk, pk = periodKey()) { return cellNames[pk]?.[staff]?.[dk] || ''; }
+function setCellName(staff, dayObj, name) {
+  const pk = periodKey(), dk = dateStr(dayObj.y, dayObj.m, dayObj.d);
+  if (!cellNames[pk])        cellNames[pk] = {};
+  if (!cellNames[pk][staff]) cellNames[pk][staff] = {};
+  if (name) cellNames[pk][staff][dk] = name;
+  else      delete cellNames[pk][staff][dk];
+  saveData();
+}
+/** シフトセルの中身に実習生名（2行目）を付け足す */
+function withTraineeName(content, staff, dk, code) {
+  const nm = (code && code !== '休') ? getCellName(staff, dk) : '';
+  return nm ? `<span class="tslot-code">${content}</span><span class="tname">${esc(nm)}</span>` : content;
 }
 
 function getShiftSkills(name)      { return staffSkills[name]?.shifts        ?? []; }
@@ -1443,9 +1489,10 @@ function renderTable() {
 
       const restCls = code === '休' ? ' shift-rest' : '';
       const cellContent = code === '休' ? '' : code === '誕' ? '<span class="tan-screen">🎂</span><span class="tan-print">誕</span>' : code === '要' ? workRequestCellHtml(name, dk) :(code.startsWith('配送') ? `<span class="haiso-pfx">配送</span>${esc(code.slice(2))}` : esc(code));
+      const cellHtml = withTraineeName(cellContent, name, dk, code);
       html += `<td class="shift-cell${restCls} ${cellDcCls}${warnCls}${offCls}${kenshinCls}${bnd}"` +
               ` data-si="${idx}" data-di="${i}"` +
-              ` style="${cellStyle}"${tipAttr}>${cellContent}</td>`;
+              ` style="${cellStyle}"${tipAttr}>${cellHtml}</td>`;
     });
 
     html += `<td class="col-sum col-sum-total">${sw.workDays || ''}</td>`;
@@ -1627,6 +1674,25 @@ function openPopup(e, staff, dayObj, targetEl) {
     `<button class="popup-clear-btn" data-code="">空白（クリア）</button>` +
     `<button class="popup-cancel-btn" id="popupCancelBtn">キャンセル</button>`;
 
+  // 実習生枠の行：当日来る実習生の名前を選ぶ
+  const tEl = document.getElementById('popupTrainee');
+  if (isTraineeSlot(staff)) {
+    const curName = getCellName(staff, dateStr(y, m, d));
+    tEl.innerHTML =
+      `<div class="pt-title">この日の実習生</div>` +
+      `<div class="pt-names">` +
+      traineePool.map((n, i) =>
+        `<span class="pt-chip${n === curName ? ' pt-cur' : ''}"><button class="pt-name" data-tname="${esc(n)}">${esc(n)}</button>` +
+        `<button class="pt-del" data-tdel="${i}" title="名簿から削除（入力済みの日はそのまま）">×</button></span>`).join('') +
+      (curName ? `<button class="pt-none" data-tname="">名前を消す</button>` : '') +
+      `</div>` +
+      `<div class="pt-add"><input id="ptNewName" maxlength="8" placeholder="名前を名簿に追加（短めに）"><button id="ptAddBtn">追加</button></div>`;
+    tEl.style.display = 'block';
+  } else {
+    tEl.innerHTML = '';
+    tEl.style.display = 'none';
+  }
+
   const popup = document.getElementById('shiftPopup');
   popup.style.display = 'block';
   const rect = targetEl.getBoundingClientRect();
@@ -1647,6 +1713,43 @@ document.getElementById('popupGrid').addEventListener('click', e => {
   renderTable();
   closePopup();
 });
+
+document.getElementById('popupTrainee').addEventListener('click', e => {
+  if (!popupTarget) return;
+  e.stopPropagation();
+  const del = e.target.closest('[data-tdel]');
+  if (del) {
+    const n = traineePool[+del.dataset.tdel];
+    if (!confirm(`「${n}」を名簿から削除しますか？\n（すでに入力した日の名前は消えません）`)) return;
+    traineePool.splice(+del.dataset.tdel, 1);
+    saveData();
+    reopenPopup();
+    return;
+  }
+  if (e.target.id === 'ptAddBtn') { addTraineeName(); return; }
+  const btn = e.target.closest('[data-tname]');
+  if (!btn) return;
+  setCellName(popupTarget.staff, popupTarget.dayObj, btn.dataset.tname);
+  renderTable();
+  closePopup();
+});
+document.getElementById('popupTrainee').addEventListener('keydown', e => {
+  if (e.target.id === 'ptNewName' && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addTraineeName(); }
+});
+function addTraineeName() {
+  const inp = document.getElementById('ptNewName');
+  const n = inp.value.trim();
+  if (!n) return;
+  if (!traineePool.includes(n)) { traineePool.push(n); saveData(); }
+  reopenPopup();
+}
+/** 名簿を変更したあと、同じセルのポップアップを開き直す */
+function reopenPopup() {
+  const { staff, dayObj } = popupTarget;
+  const si = staffList.indexOf(staff), di = getPeriodDays().findIndex(x => x.y === dayObj.y && x.m === dayObj.m && x.d === dayObj.d);
+  const td = document.querySelector(`#shiftTable .shift-cell[data-si="${si}"][data-di="${di}"]`);
+  if (td) openPopup(null, staff, dayObj, td);
+}
 
 function closePopup() {
   document.getElementById('shiftPopup').style.display = 'none';
@@ -1737,7 +1840,7 @@ function buildHalfTableHTML(half) {
       const restCls = code === '休' ? ' shift-rest' : '';
       const kenshinCls = isHealthCheckWorkDay(name, day.y, day.m, day.d) ? ' cell-kenshin-work' : '';
       const content = (!code || code === '休') ? '' : code === '要' ? workRequestCellHtml(name, dk) : esc(code);
-      html += `<td class="${dcCls}${restCls}${kenshinCls}" style="${style}">${content}</td>`;
+      html += `<td class="${dcCls}${restCls}${kenshinCls}" style="${style}">${withTraineeName(content, name, dk, code)}</td>`;
     });
     html += `</tr>`;
   });
@@ -2009,6 +2112,7 @@ document.getElementById('clearPeriodBtn').addEventListener('click', () => {
   if (cells === 0) { alert('この期間にはシフトが入っていません。'); return; }
   if (!confirm(`「${getPeriodLabel()}」のシフト ${cells} 件をすべて空白に戻します。\n（今期・過去の期間と備考欄は変わりません）\nよろしいですか？`)) return;
   delete shiftData[pk];
+  delete cellNames[pk];
   saveData();
   renderTable();
 });
@@ -2328,6 +2432,10 @@ function renderStaffList() {
           <label for="sat-${i}">土曜日も出勤する</label>
           <input type="checkbox" id="sun-${i}" data-type="sun" data-si="${i}" ${workSun ? 'checked' : ''}>
           <label for="sun-${i}">日曜・祝日も出勤する</label>
+        </div>
+        <div class="skill-sat-row">
+          <input type="checkbox" id="tslot-${i}" data-type="tslot" data-si="${i}" ${staffSkills[name]?.traineeSlot ? 'checked' : ''}>
+          <label for="tslot-${i}">日替わり実習生の枠（シフト表のセルにその日の実習生名を入れる）</label>
         </div>
         <div class="skill-section-title">作業スキル（担当できる作業）</div>
         <div class="skill-chips">${wsChips}</div>
@@ -2821,6 +2929,14 @@ document.getElementById('staffListEl').addEventListener('change', e => {
     ensureSkillObj(name);
     staffSkills[name].workSun = e.target.checked;
     saveData();
+  }
+  if (e.target.dataset.type === 'tslot') {
+    const si   = parseInt(e.target.dataset.si, 10);
+    const name = staffList[si];
+    ensureSkillObj(name);
+    staffSkills[name].traineeSlot = e.target.checked;
+    saveData();
+    renderTable();
   }
   if (e.target.dataset.type === 'stafftype') {
     const si   = parseInt(e.target.dataset.si, 10);
